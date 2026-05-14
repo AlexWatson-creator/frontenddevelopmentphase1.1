@@ -1,0 +1,41 @@
+[project]
+name = "japdp-backend"
+version = "0.1.0"
+description = "JAPDP Backend — FastAPI service for Jablonsky Data Platform"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy>=2.0.0",
+    "pyodbc>=5.1.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
+    "scipy>=1.14.0",
+    "shapely>=2.0.0",
+    "geopandas>=1.0.0",
+    "alembic>=1.14.0",
+    "geoalchemy2>=0.15.0",
+    "rundown-engine",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+]
+
+[tool.uv.sources]
+rundown-engine = { path = "../rundown_engine", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

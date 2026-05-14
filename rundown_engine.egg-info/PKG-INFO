@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: rundown-engine
+Version: 0.1.0
+Summary: Standalone cumulative gravity load (rundown) computation engine
+Requires-Python: >=3.11
+Requires-Dist: openpyxl>=3.1
+Requires-Dist: ezdxf>=0.18
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"

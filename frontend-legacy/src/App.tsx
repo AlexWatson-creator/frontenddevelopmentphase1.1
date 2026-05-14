@@ -4,13 +4,13 @@ import "./App.css";
 import Rundown from "./components/rundown";
 import Projects from "./components/projects";
 import ProjectDetail from "./components/projectdetail";
-import type { Project } from "./components/projects";
+import type { ProjectGroup } from "./api/types";
 
 function App() {
   const [page, setPage] = useState<"projects" | "rundown">("projects");
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectGroup | null>(null);
 
-  function handleSelectProject(project: Project) {
+  function handleSelectProject(project: ProjectGroup) {
     setSelectedProject(project);
     setPage("projects");
   }

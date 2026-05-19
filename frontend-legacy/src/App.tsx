@@ -1,9 +1,9 @@
 import { useState } from "react";
 import jppLogo from "./assets/jpp.png";
 import "./App.css";
-import Rundown from "./components/rundown";
 import Projects from "./components/projects";
 import ProjectDetail from "./components/projectdetail";
+import RundownWorkspace from "./pages/RundownWorkspace";
 import type { ProjectGroup } from "./api/types";
 
 const TEST_USERS = [
@@ -124,8 +124,9 @@ function Dashboard({
   user: User;
   onLogout: () => void;
 }) {
-  const [page, setPage] = useState<"projects" | "rundown">("projects");
+  const [page, setPage] = useState("projects");
   const [selectedProject, setSelectedProject] = useState<ProjectGroup | null>(null);
+  const [rundownProject, setRundownProject] = useState<ProjectGroup | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const initials = user.name
@@ -187,12 +188,6 @@ function Dashboard({
                   action: () => { setPage("projects"); setSelectedProject(null); },
                   active: page === "projects",
                   icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
-                },
-                {
-                  label: "Load Rundown",
-                  action: () => { setPage("rundown"); setSelectedProject(null); },
-                  active: page === "rundown",
-                  icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
                 },
                 {
                   label: "Uploads",
@@ -277,18 +272,25 @@ function Dashboard({
           sidebarOpen ? "lg:ml-64" : "lg:ml-16"
         }`}
       >
-        {page === "rundown" && <Rundown />}
         {page === "projects" && selectedProject && (
           <ProjectDetail
             project={selectedProject}
             onBack={() => setSelectedProject(null)}
-            onRundown={() => { setPage("rundown"); setSelectedProject(null); }}
+            onRundown={() => setRundownProject(selectedProject)}
           />
         )}
         {page === "projects" && !selectedProject && (
           <Projects onSelectProject={(p) => { setSelectedProject(p); setPage("projects"); }} />
         )}
       </section>
+
+      {/* Full-screen Rundown drawing workspace overlay */}
+      {rundownProject && (
+        <RundownWorkspace
+          project={rundownProject}
+          onBack={() => setRundownProject(null)}
+        />
+      )}
     </main>
   );
 }

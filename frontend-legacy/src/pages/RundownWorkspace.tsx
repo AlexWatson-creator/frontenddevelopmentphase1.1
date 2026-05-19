@@ -139,11 +139,14 @@ export default function RundownWorkspace({
 
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
+  // true = load table editor visible; false = collapsed (submitted state)
+  const [loadTableOpen, setLoadTableOpen] = useState(true);
 
   // ── Drawing tools ─────────────────────────────────────────────────────────
 
   const [selectedTool, setSelectedTool] = useState<"Select" | "Rect" | "Poly">("Select");
-  const [drawnAreas, setDrawnAreas] = useState<DrawnArea[]>([]);
+  // Areas stored per-level: { [levelId]: DrawnArea[] }
+  const [areasByLevel, setAreasByLevel] = useState<Record<number, DrawnArea[]>>({});
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
 
   // ── Snap & layers ─────────────────────────────────────────────────────────
@@ -208,6 +211,16 @@ export default function RundownWorkspace({
   }, [sortedLevels, selectedLevelId]);
 
   const canDraw = loadRows.some((r) => r.name.trim() !== "");
+
+  // Areas for the currently selected level only
+  const drawnAreas: DrawnArea[] = selectedLevelId != null ? (areasByLevel[selectedLevelId] ?? []) : [];
+
+  function setDrawnAreas(updater: (prev: DrawnArea[]) => DrawnArea[]) {
+    if (selectedLevelId == null) return;
+    const lvlId = selectedLevelId;
+    setAreasByLevel((all) => ({ ...all, [lvlId]: updater(all[lvlId] ?? []) }));
+  }
+
   const selectedArea = drawnAreas.find((a) => a.id === selectedAreaId);
 
   // ── Boot: fetch project detail ────────────────────────────────────────────
@@ -244,12 +257,16 @@ export default function RundownWorkspace({
         if (cancelled) return;
         const rows = entries.map(dbEntryToRow);
         setLoadRows(rows);
-        if (rows.length > 0) setSelectedLoadRowId(rows[0].id);
-        else setSelectedLoadRowId("");
+        if (rows.length > 0) {
+          setSelectedLoadRowId(rows[0].id);
+          setLoadTableOpen(false); // already have data — start collapsed
+        } else {
+          setSelectedLoadRowId("");
+          setLoadTableOpen(true); // no data yet — open editor for user to fill in
+        }
       })
       .catch(() => {
-        // Backend may have no entries yet — start empty
-        if (!cancelled) { setLoadRows([]); setSelectedLoadRowId(""); }
+        if (!cancelled) { setLoadRows([]); setSelectedLoadRowId(""); setLoadTableOpen(true); }
       });
     return () => { cancelled = true; };
   }, [selectedFileId]);
@@ -264,6 +281,8 @@ export default function RundownWorkspace({
 
   useEffect(() => {
     if (selectedFileId == null || selectedLevelId == null) return;
+    // Clear any cross-level selection when the floor changes
+    setSelectedAreaId(null);
     let cancelled = false;
     setIsLoadingElements(true);
     setElementsError(null);
@@ -677,124 +696,165 @@ export default function RundownWorkspace({
           {isLeftOpen ? (
             <div className="flex flex-1 flex-col overflow-hidden">
 
-              {/* Load Table — vertical cards */}
-              <div className="shrink-0 border-b border-stone-200 px-3 py-3">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#5C5D61]">
-                  Load Table
-                </p>
-
-                <div className="flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: "280px" }}>
-                  {loadRows.length === 0 && (
-                    <p className="text-[11px] italic text-stone-400 py-2">
-                      No load types yet. Add one below.
+              {loadTableOpen ? (
+                /* ── EDITOR MODE: fill in load types then submit ── */
+                <div className="flex flex-1 flex-col overflow-hidden">
+                  {/* Header */}
+                  <div className="shrink-0 flex items-center justify-between border-b border-stone-200 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#5C5D61]">
+                      Load Table
                     </p>
-                  )}
-                  {loadRows.map((row) => (
-                    <div key={row.id} className="rounded-lg border border-stone-200 bg-stone-50 p-2">
-                      {/* Row 1: Name + Description + Delete */}
-                      <div className="mb-1.5 flex items-center gap-1.5">
-                        <input
-                          type="text"
-                          value={row.name}
-                          onChange={(e) => updateRow(row.id, "name", e.target.value)}
-                          placeholder="Name (e.g. RES)"
-                          className="min-w-0 flex-1 rounded border border-stone-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-[#231F20] outline-none focus:border-[#CE1B22]"
-                        />
-                        <input
-                          type="text"
-                          value={row.description}
-                          onChange={(e) => updateRow(row.id, "description", e.target.value)}
-                          placeholder="Description"
-                          className="min-w-0 flex-[2] rounded border border-stone-200 bg-white px-1.5 py-1 text-[11px] text-[#5C5D61] outline-none focus:border-[#CE1B22]"
-                        />
-                        <button
-                          onClick={() => deleteRow(row.id)}
-                          className="shrink-0 text-sm leading-none text-stone-300 transition hover:text-[#CE1B22]"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      {/* Row 2: Dead + Live + LLRF */}
-                      <div className="flex items-center gap-1.5">
-                        <label className="text-[10px] text-[#5C5D61] shrink-0">Dead</label>
-                        <input
-                          type="number"
-                          value={row.dead}
-                          min={0}
-                          step={0.01}
-                          onChange={(e) => updateRow(row.id, "dead", e.target.value)}
-                          onBlur={(e) => blurNumber(row.id, "dead", e.target.value)}
-                          className="w-[52px] rounded border border-stone-200 bg-white px-1.5 py-1 text-center text-[11px] outline-none focus:border-[#CE1B22]"
-                        />
-                        <label className="text-[10px] text-[#5C5D61] shrink-0">Live</label>
-                        <input
-                          type="number"
-                          value={row.live}
-                          min={0}
-                          step={0.01}
-                          onChange={(e) => updateRow(row.id, "live", e.target.value)}
-                          onBlur={(e) => blurNumber(row.id, "live", e.target.value)}
-                          className="w-[52px] rounded border border-stone-200 bg-white px-1.5 py-1 text-center text-[11px] outline-none focus:border-[#CE1B22]"
-                        />
-                        <label className="text-[10px] text-[#5C5D61] shrink-0">LLRF</label>
-                        <select
-                          value={row.llrf}
-                          onChange={(e) =>
-                            updateRow(row.id, "llrf", e.target.value as "N" | "R0.3" | "R0.5")
-                          }
-                          className="w-[58px] rounded border border-stone-200 bg-white px-1 py-1 text-[11px] outline-none focus:border-[#CE1B22]"
-                        >
-                          <option>N</option>
-                          <option>R0.3</option>
-                          <option>R0.5</option>
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  onClick={addRow}
-                  className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-[#CE1B22] transition hover:text-[#ad151b]"
-                >
-                  <span className="text-base leading-none">+</span> Add Load Type
-                </button>
-              </div>
-
-              {/* Load Type — buttons from load table entries */}
-              <div className="overflow-y-auto px-3 py-3">
-                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#5C5D61]">
-                  Active Load Type
-                </p>
-                {!canDraw ? (
-                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-700">
-                    Add a named load type above to enable drawing.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {loadRows
-                      .filter((r) => r.name.trim() !== "")
-                      .map((row) => (
-                        <button
-                          key={row.id}
-                          onClick={() => setSelectedLoadRowId(row.id)}
-                          className={`rounded px-3 py-1.5 text-left text-xs font-semibold transition ${
-                            selectedLoadRowId === row.id
-                              ? "bg-[#CE1B22] text-white"
-                              : "border border-stone-200 bg-stone-50 text-[#5C5D61] hover:bg-stone-100"
-                          }`}
-                        >
-                          {row.name}
-                          {row.description && (
-                            <span className="ml-1.5 font-normal opacity-70 text-[10px]">
-                              {row.description}
-                            </span>
-                          )}
-                        </button>
-                      ))}
                   </div>
-                )}
-              </div>
+
+                  {/* Rows */}
+                  <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-3">
+                    {loadRows.length === 0 && (
+                      <p className="text-[11px] italic text-stone-400 py-1">
+                        No load types yet. Add one below.
+                      </p>
+                    )}
+                    {loadRows.map((row) => (
+                      <div key={row.id} className="rounded-lg border border-stone-200 bg-stone-50 p-2">
+                        <div className="mb-1.5 flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={row.name}
+                            onChange={(e) => updateRow(row.id, "name", e.target.value)}
+                            placeholder="Name (e.g. RES)"
+                            className="min-w-0 flex-1 rounded border border-stone-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-[#231F20] outline-none focus:border-[#CE1B22]"
+                          />
+                          <input
+                            type="text"
+                            value={row.description}
+                            onChange={(e) => updateRow(row.id, "description", e.target.value)}
+                            placeholder="Description"
+                            className="min-w-0 flex-[2] rounded border border-stone-200 bg-white px-1.5 py-1 text-[11px] text-[#5C5D61] outline-none focus:border-[#CE1B22]"
+                          />
+                          <button
+                            onClick={() => deleteRow(row.id)}
+                            className="shrink-0 text-sm leading-none text-stone-300 transition hover:text-[#CE1B22]"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <label className="shrink-0 text-[10px] text-[#5C5D61]">Dead</label>
+                          <input
+                            type="number"
+                            value={row.dead}
+                            min={0}
+                            step={0.01}
+                            onChange={(e) => updateRow(row.id, "dead", e.target.value)}
+                            onBlur={(e) => blurNumber(row.id, "dead", e.target.value)}
+                            className="w-[52px] rounded border border-stone-200 bg-white px-1.5 py-1 text-center text-[11px] outline-none focus:border-[#CE1B22]"
+                          />
+                          <label className="shrink-0 text-[10px] text-[#5C5D61]">Live</label>
+                          <input
+                            type="number"
+                            value={row.live}
+                            min={0}
+                            step={0.01}
+                            onChange={(e) => updateRow(row.id, "live", e.target.value)}
+                            onBlur={(e) => blurNumber(row.id, "live", e.target.value)}
+                            className="w-[52px] rounded border border-stone-200 bg-white px-1.5 py-1 text-center text-[11px] outline-none focus:border-[#CE1B22]"
+                          />
+                          <label className="shrink-0 text-[10px] text-[#5C5D61]">LLRF</label>
+                          <select
+                            value={row.llrf}
+                            onChange={(e) =>
+                              updateRow(row.id, "llrf", e.target.value as "N" | "R0.3" | "R0.5")
+                            }
+                            className="w-[58px] rounded border border-stone-200 bg-white px-1 py-1 text-[11px] outline-none focus:border-[#CE1B22]"
+                          >
+                            <option>N</option>
+                            <option>R0.3</option>
+                            <option>R0.5</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={addRow}
+                      className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-[#CE1B22] transition hover:text-[#ad151b]"
+                    >
+                      <span className="text-base leading-none">+</span> Add Load Type
+                    </button>
+                  </div>
+
+                  {/* Submit */}
+                  <div className="shrink-0 border-t border-stone-200 px-3 py-3">
+                    <button
+                      onClick={() => {
+                        if (canDraw) {
+                          setLoadTableOpen(false);
+                          // ensure first named row is selected
+                          const first = loadRows.find((r) => r.name.trim() !== "");
+                          if (first && !loadRows.find((r) => r.id === selectedLoadRowId)?.name.trim()) {
+                            setSelectedLoadRowId(first.id);
+                          }
+                        }
+                      }}
+                      disabled={!canDraw}
+                      className="w-full rounded-lg bg-[#CE1B22] py-2 text-xs font-bold text-white transition hover:bg-[#ad151b] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Submit Load Table
+                    </button>
+                    {!canDraw && (
+                      <p className="mt-1.5 text-center text-[10px] text-amber-600">
+                        Add at least one named load type to submit.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* ── SUBMITTED MODE: show load type selector ── */
+                <div className="flex flex-1 flex-col overflow-hidden">
+                  {/* Active Load Type header + edit button */}
+                  <div className="shrink-0 flex items-center justify-between border-b border-stone-200 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#5C5D61]">
+                      Active Load Type
+                    </p>
+                    <button
+                      onClick={() => setLoadTableOpen(true)}
+                      className="text-[10px] font-semibold text-[#CE1B22] transition hover:text-[#ad151b]"
+                    >
+                      Edit Table
+                    </button>
+                  </div>
+
+                  {/* Load type selector buttons */}
+                  <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 py-3">
+                    {loadRows.filter((r) => r.name.trim() !== "").map((row) => (
+                      <button
+                        key={row.id}
+                        onClick={() => setSelectedLoadRowId(row.id)}
+                        className={`rounded px-3 py-2 text-left text-xs font-semibold transition ${
+                          selectedLoadRowId === row.id
+                            ? "bg-[#CE1B22] text-white"
+                            : "border border-stone-200 bg-stone-50 text-[#5C5D61] hover:bg-stone-100"
+                        }`}
+                      >
+                        <span className="block text-sm font-bold">{row.name}</span>
+                        <span className="mt-0.5 block text-xs font-normal opacity-80">
+                          D {row.dead} · L {row.live} · {row.llrf}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Add more load types */}
+                  <div className="shrink-0 border-t border-stone-200 px-3 py-2.5">
+                    <button
+                      onClick={() => setLoadTableOpen(true)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-[#CE1B22] transition hover:text-[#ad151b]"
+                    >
+                      <span className="text-base leading-none">+</span> Add Load Type
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
           ) : (
             <div className="flex flex-col items-center gap-6 pt-14">
@@ -873,13 +933,12 @@ export default function RundownWorkspace({
 
             {/* ── STRUCTURAL ELEMENTS FROM BACKEND ── */}
 
-            {/* Slab boundary */}
+            {/* Slab boundary — subtle fill only */}
             {layers.slabs && slabPts && slabPts.length > 0 && (
               <polygon
                 points={ptsToStr(slabPts)}
-                fill="#f2f0ec"
-                stroke="#c8c4bc"
-                strokeWidth="60"
+                fill="rgba(210,207,200,0.35)"
+                stroke="none"
               />
             )}
 
@@ -891,8 +950,7 @@ export default function RundownWorkspace({
                     key={`opening-${i}`}
                     points={ptsToStr(pts)}
                     fill="#e5e2dc"
-                    stroke="#b8b4ac"
-                    strokeWidth="40"
+                    stroke="none"
                   />
                 ) : null
               )}
@@ -904,15 +962,14 @@ export default function RundownWorkspace({
                   <line
                     x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}
                     stroke="#8b9bb4"
-                    strokeWidth="18"
-                    strokeDasharray="600 300"
-                    opacity="0.8"
+                    strokeWidth="15"
+                    strokeDasharray="500 250"
+                    opacity="0.6"
                   />
                   <text
-                    x={g.x1}
-                    y={g.y1 - 200}
+                    x={g.x1} y={g.y1 - 250}
                     fill="#8b9bb4"
-                    fontSize="500"
+                    fontSize="400"
                     fontWeight="bold"
                     textAnchor="middle"
                   >
@@ -921,47 +978,101 @@ export default function RundownWorkspace({
                 </g>
               ))}
 
-            {/* Walls */}
+            {/* Walls — rendered as rotated dashed rectangles showing the wall footprint */}
             {layers.walls &&
-              (levelElements?.walls ?? []).map((w, i) => (
-                <line
-                  key={`wall-${i}`}
-                  x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}
-                  stroke="#302D27"
-                  strokeWidth={w.thickness ?? 200}
-                  strokeLinecap="round"
-                />
-              ))}
+              (levelElements?.walls ?? []).map((w, i) => {
+                const dx = w.x2 - w.x1;
+                const dy = w.y2 - w.y1;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len < 1) return null;
+                const cx = (w.x1 + w.x2) / 2;
+                const cy = (w.y1 + w.y2) / 2;
+                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+                const t = (w.thickness ?? 200);
+                const label = w.mark ?? String(w.element_id);
+                return (
+                  <g key={`wall-${i}`} transform={`rotate(${angle},${cx},${cy})`}>
+                    <rect
+                      x={cx - len / 2}
+                      y={cy - t / 2}
+                      width={len}
+                      height={t}
+                      fill="none"
+                      stroke="#CE1B22"
+                      strokeWidth="22"
+                      strokeDasharray="120 60"
+                    />
+                    {/* Label centered on wall */}
+                    <text
+                      x={cx}
+                      y={cy - t / 2 - 60}
+                      fill="#CE1B22"
+                      fontSize="220"
+                      fontWeight="600"
+                      textAnchor="middle"
+                      transform={`rotate(${-angle},${cx},${cy - t / 2 - 60})`}
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
 
-            {/* Columns */}
+            {/* Columns — dashed rectangle outline + X mark + label */}
             {layers.columns &&
               (levelElements?.columns ?? []).map((c, i) => {
+                const label = c.mark ?? String(c.element_id);
                 if (c.d) {
+                  const r = c.d / 2;
+                  const o = r * 0.68; // X offset for circle (~cos45°·r)
                   return (
-                    <circle
-                      key={`col-${i}`}
-                      cx={c.x} cy={c.y}
-                      r={c.d / 2}
-                      fill="#c8c4bc"
-                      stroke="#302D27"
-                      strokeWidth="25"
-                    />
+                    <g key={`col-${i}`}>
+                      <circle
+                        cx={c.x} cy={c.y} r={r}
+                        fill="none"
+                        stroke="#CE1B22"
+                        strokeWidth="22"
+                        strokeDasharray="120 60"
+                      />
+                      <line x1={c.x - o} y1={c.y - o} x2={c.x + o} y2={c.y + o} stroke="#CE1B22" strokeWidth="22" />
+                      <line x1={c.x + o} y1={c.y - o} x2={c.x - o} y2={c.y + o} stroke="#CE1B22" strokeWidth="22" />
+                      <text x={c.x} y={c.y - r - 60} fill="#CE1B22" fontSize="220" fontWeight="600" textAnchor="middle">
+                        {label}
+                      </text>
+                    </g>
                   );
                 }
                 const bw = c.b ?? 300;
                 const bh = c.h ?? 300;
+                const x0 = c.x - bw / 2;
+                const y0 = c.y - bh / 2;
                 return (
-                  <rect
+                  <g
                     key={`col-${i}`}
-                    x={c.x - bw / 2}
-                    y={c.y - bh / 2}
-                    width={bw}
-                    height={bh}
-                    fill="#c8c4bc"
-                    stroke="#302D27"
-                    strokeWidth="25"
                     transform={c.rotation ? `rotate(${c.rotation},${c.x},${c.y})` : undefined}
-                  />
+                  >
+                    <rect
+                      x={x0} y={y0} width={bw} height={bh}
+                      fill="none"
+                      stroke="#CE1B22"
+                      strokeWidth="22"
+                      strokeDasharray="120 60"
+                    />
+                    {/* X mark */}
+                    <line x1={x0} y1={y0} x2={x0 + bw} y2={y0 + bh} stroke="#CE1B22" strokeWidth="22" />
+                    <line x1={x0 + bw} y1={y0} x2={x0} y2={y0 + bh} stroke="#CE1B22" strokeWidth="22" />
+                    {/* Label above */}
+                    <text
+                      x={c.x}
+                      y={y0 - 60}
+                      fill="#CE1B22"
+                      fontSize="220"
+                      fontWeight="600"
+                      textAnchor="middle"
+                    >
+                      {label}
+                    </text>
+                  </g>
                 );
               })}
 

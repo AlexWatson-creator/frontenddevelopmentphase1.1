@@ -117,3 +117,87 @@ export async function fetchLoadTable(
   if (!res.ok) throw new Error(`Failed to load load table (${res.status})`);
   return res.json() as Promise<LoadTableEntry[]>;
 }
+
+export type LoadTableCreateEntry = {
+  name: string;
+  description: string;
+  dead_load_kpa: number;
+  live_load_kpa: number;
+  llrf_type: string;
+};
+
+export async function saveLoadTable(
+  fileId: number,
+  entries: LoadTableCreateEntry[]
+): Promise<LoadTableEntry[]> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/projects/files/${fileId}/load-table`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entries),
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to save load table (${res.status})`);
+  return res.json() as Promise<LoadTableEntry[]>;
+}
+
+// ─── Tributary / Voronoi compute ─────────────────────────────────────────────
+
+export type TributaryLoadArea = {
+  polygon_wkt: string;
+  load_table_id: number;
+};
+
+export type TributaryComputeRequest = {
+  project_id: number;
+  level_above_id: number;
+  level_below_id: number;
+  floor_boundary_source: "slab_db" | "json_upload" | "drawn_areas";
+  floor_boundary_wkt?: string | null;
+  load_areas: TributaryLoadArea[];
+  wall_spacing_mm?: number;
+};
+
+export type TributaryCell = {
+  element_guid: string;
+  element_type: string;
+  polygon_wkt: string;
+  area_m2: number;
+  beam_weights_detail: string | null;
+};
+
+export type TributaryLoadAssignment = {
+  element_guid: string;
+  element_type: string;
+  load_table_id: number;
+  tributary_area_m2: number;
+  dead_load_kn: number;
+  live_load_kn: number;
+};
+
+export type TributaryComputeResponse = {
+  project_id: number;
+  level_above_id: number;
+  level_below_id: number;
+  boundary_area_m2: number;
+  column_count: number;
+  wall_count: number;
+  cells: TributaryCell[];
+  load_assignments: TributaryLoadAssignment[];
+};
+
+export async function computeTributary(
+  req: TributaryComputeRequest
+): Promise<TributaryComputeResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/tributary/compute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Tributary compute failed (${res.status})${detail ? `: ${detail}` : ""}`);
+  }
+  return res.json() as Promise<TributaryComputeResponse>;
+}

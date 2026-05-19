@@ -4,8 +4,15 @@ import { fetchProjectDetail } from "../api/projects";
 import {
   fetchLevelElements,
   fetchLoadTable,
+  saveLoadTable,
+  computeTributary,
 } from "../services/api";
-import type { LevelElements, LoadTableEntry } from "../services/api";
+import type {
+  LevelElements,
+  LoadTableEntry,
+  TributaryComputeResponse,
+  TributaryCell,
+} from "../services/api";
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -92,6 +99,7 @@ function elementsToViewBox(el: LevelElements): ViewBox {
   };
 }
 
+
 function dbEntryToRow(e: LoadTableEntry): LoadRow {
   const llrf = (["N", "R0.3", "R0.5"].includes(e.llrf_type)
     ? e.llrf_type
@@ -175,9 +183,15 @@ export default function RundownWorkspace({
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<PanStart | null>(null);
 
-  // ── Feedback ─────────────────────────────────────────────────────────────
+  // ── Feedback / async state ────────────────────────────────────────────────
 
-  const [completeMsg, setCompleteMsg] = useState("");
+  // Backend tributary response — drives both Voronoi rendering and results panel
+  const [tributaryResponse, setTributaryResponse] = useState<TributaryComputeResponse | null>(null);
+  const [isComputing, setIsComputing] = useState(false);
+  const [computeError, setComputeError] = useState<string | null>(null);
+  // Load table save state
+  const [isSavingTable, setIsSavingTable] = useState(false);
+  const [tableSaveError, setTableSaveError] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -193,11 +207,6 @@ export default function RundownWorkspace({
     if (!currentFile) return [];
     return [...currentFile.levels].sort((a, b) => b.elevation - a.elevation);
   }, [currentFile]);
-
-  const currentLevelObj = useMemo(
-    () => sortedLevels.find((l) => l.id === selectedLevelId) ?? null,
-    [sortedLevels, selectedLevelId]
-  );
 
   const belowLevelObj = useMemo(
     () => sortedLevels.find((l) => l.id === belowLevelId) ?? null,
@@ -519,37 +528,64 @@ export default function RundownWorkspace({
     }
   }
 
-  // ── Complete & delete ─────────────────────────────────────────────────────
+  // ── Compute & delete ─────────────────────────────────────────────────────
 
-  function showMsg(m: string) {
-    setCompleteMsg(m);
-    setTimeout(() => setCompleteMsg(""), 2500);
-  }
-
-  function handleComplete() {
+  async function handleCompute() {
+    // Finish any in-progress polygon first
     if (selectedTool === "Poly" && polyPoints.length >= 3 && selectedLoadRowId) {
       setDrawnAreas((a) => [
         ...a,
-        {
-          id: `area-${Date.now()}`,
-          type: "poly",
-          points: [...polyPoints],
-          loadRowId: selectedLoadRowId,
-          createdAt: new Date().toISOString(),
-        },
+        { id: `area-${Date.now()}`, type: "poly", points: [...polyPoints],
+          loadRowId: selectedLoadRowId, createdAt: new Date().toISOString() },
       ]);
       setPolyPoints([]);
-      showMsg("Polygon completed!");
-    } else {
-      const selectedRow = loadRows.find((r) => r.id === selectedLoadRowId);
-      console.log("=== Rundown Workspace State ===");
-      console.log("loadRows:", loadRows);
-      console.log("selectedLoadRow:", selectedRow);
-      console.log("drawnAreas:", drawnAreas);
-      console.log("selectedTool:", selectedTool);
-      console.log("currentLevel:", currentLevelObj?.name);
-      console.log("belowLevel:", belowLevelObj?.name);
-      showMsg("Completed!");
+    }
+
+    if (!levelElements) { setComputeError("Floor plan not loaded yet."); return; }
+    if (drawnAreas.length === 0) { setComputeError("Draw load areas on the canvas first."); return; }
+    if (selectedLevelId == null) { setComputeError("Select a level first."); return; }
+
+    // Convert drawn areas to WKT polygons, using the DB id of each load row
+    const loadAreaPayload = drawnAreas.flatMap((area) => {
+      const row = loadRows.find((r) => r.id === area.loadRowId);
+      if (!row?.dbId) return [];
+      let wkt: string;
+      if (area.type === "rect") {
+        const x1 = area.x ?? 0, y1 = area.y ?? 0;
+        const x2 = x1 + (area.width ?? 0), y2 = y1 + (area.height ?? 0);
+        wkt = `POLYGON ((${x1} ${y1}, ${x2} ${y1}, ${x2} ${y2}, ${x1} ${y2}, ${x1} ${y1}))`;
+      } else {
+        const pts = area.points ?? [];
+        if (pts.length < 3) return [];
+        const ring = [...pts, pts[0]].map((p) => `${p.x} ${p.y}`).join(", ");
+        wkt = `POLYGON ((${ring}))`;
+      }
+      return [{ polygon_wkt: wkt, load_table_id: row.dbId }];
+    });
+
+    if (loadAreaPayload.length === 0) {
+      setComputeError("Save the load table first (Submit), then draw areas and compute.");
+      return;
+    }
+
+    setIsComputing(true);
+    setComputeError(null);
+    try {
+      const resp = await computeTributary({
+        project_id: levelElements.project_id,
+        level_above_id: selectedLevelId,
+        level_below_id: belowLevelId ?? selectedLevelId,
+        floor_boundary_source: boundarySource === "From Drawn Areas" ? "drawn_areas" : "slab_db",
+        load_areas: loadAreaPayload,
+        wall_spacing_mm: 200,
+      });
+      setTributaryResponse(resp);
+      setLayers((l) => ({ ...l, voronoi: true }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Compute failed";
+      setComputeError(msg);
+    } finally {
+      setIsComputing(false);
     }
   }
 
@@ -579,6 +615,7 @@ export default function RundownWorkspace({
     () => (levelElements?.slab_openings ?? []).map(parseWKT),
     [levelElements]
   );
+
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -785,21 +822,51 @@ export default function RundownWorkspace({
                   {/* Submit */}
                   <div className="shrink-0 border-t border-stone-200 px-3 py-3">
                     <button
-                      onClick={() => {
-                        if (canDraw) {
+                      onClick={async () => {
+                        if (!canDraw || selectedFileId == null) return;
+                        setIsSavingTable(true);
+                        setTableSaveError(null);
+                        try {
+                          const saved = await saveLoadTable(
+                            selectedFileId,
+                            loadRows
+                              .filter((r) => r.name.trim() !== "")
+                              .map((r) => ({
+                                name: r.name.trim(),
+                                description: r.description,
+                                dead_load_kpa: parseFloat(r.dead) || 0,
+                                live_load_kpa: parseFloat(r.live) || 0,
+                                llrf_type: r.llrf,
+                              }))
+                          );
+                          // Re-hydrate rows with DB ids
+                          const hydrated = saved.map((e) => ({
+                            id: `db-${e.id}`,
+                            dbId: e.id,
+                            name: e.name,
+                            description: e.description ?? "",
+                            dead: e.dead_load_kpa != null ? Number(e.dead_load_kpa).toFixed(2) : "0.00",
+                            live: e.live_load_kpa != null ? Number(e.live_load_kpa).toFixed(2) : "0.00",
+                            llrf: (["N","R0.3","R0.5"].includes(e.llrf_type) ? e.llrf_type : "N") as "N"|"R0.3"|"R0.5",
+                          }));
+                          setLoadRows(hydrated);
+                          const first = hydrated[0];
+                          if (first) setSelectedLoadRowId(first.id);
                           setLoadTableOpen(false);
-                          // ensure first named row is selected
-                          const first = loadRows.find((r) => r.name.trim() !== "");
-                          if (first && !loadRows.find((r) => r.id === selectedLoadRowId)?.name.trim()) {
-                            setSelectedLoadRowId(first.id);
-                          }
+                        } catch (err) {
+                          setTableSaveError(err instanceof Error ? err.message : "Save failed");
+                        } finally {
+                          setIsSavingTable(false);
                         }
                       }}
-                      disabled={!canDraw}
+                      disabled={!canDraw || isSavingTable}
                       className="w-full rounded-lg bg-[#CE1B22] py-2 text-xs font-bold text-white transition hover:bg-[#ad151b] disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Submit Load Table
+                      {isSavingTable ? "Saving…" : "Submit Load Table"}
                     </button>
+                    {tableSaveError && (
+                      <p className="mt-1.5 text-center text-[10px] text-red-600">{tableSaveError}</p>
+                    )}
                     {!canDraw && (
                       <p className="mt-1.5 text-center text-[10px] text-amber-600">
                         Add at least one named load type to submit.
@@ -1075,6 +1142,21 @@ export default function RundownWorkspace({
                   </g>
                 );
               })}
+
+            {/* ── VORONOI CELLS (from backend) ── */}
+            {layers.voronoi && tributaryResponse?.cells.map((cell: TributaryCell, i: number) => {
+              const pts = parseWKT(cell.polygon_wkt);
+              if (pts.length < 3) return null;
+              return (
+                <polygon
+                  key={`vor-${i}`}
+                  points={ptsToStr(pts)}
+                  fill="rgba(100,149,220,0.08)"
+                  stroke="rgba(70,120,210,0.6)"
+                  strokeWidth="20"
+                />
+              );
+            })}
 
             {/* ── DRAWN AREAS ── */}
             {drawnAreas.map((area) => {
@@ -1384,16 +1466,22 @@ export default function RundownWorkspace({
 
               <div className="flex-1" />
 
-              {/* Complete */}
+              {/* Compute */}
               <div className="sticky bottom-0 mt-auto border-t border-stone-200 bg-white px-3 py-3">
-                {completeMsg && (
-                  <p className="mb-2 text-center text-[11px] font-semibold text-green-600">{completeMsg}</p>
+                {computeError && (
+                  <p className="mb-2 rounded bg-red-50 px-2 py-1.5 text-center text-[10px] text-red-600">{computeError}</p>
                 )}
                 <button
-                  onClick={handleComplete}
-                  className="w-full rounded-lg bg-[#CE1B22] py-2.5 text-sm font-bold text-white transition hover:bg-[#ad151b]"
+                  onClick={handleCompute}
+                  disabled={isComputing}
+                  className="w-full rounded-lg bg-[#CE1B22] py-2.5 text-sm font-bold text-white transition hover:bg-[#ad151b] disabled:opacity-60"
                 >
-                  Complete
+                  {isComputing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                      Computing…
+                    </span>
+                  ) : "Compute"}
                 </button>
               </div>
             </div>
@@ -1410,6 +1498,7 @@ export default function RundownWorkspace({
           </div>{/* end right inner content box */}
         </div>{/* end right sidebar outer wrapper */}
       </div>
+
     </div>
   );
 }

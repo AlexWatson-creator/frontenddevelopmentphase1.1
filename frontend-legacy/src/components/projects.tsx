@@ -19,6 +19,7 @@ function Projects({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [revitYearFilter, setRevitYearFilter] = useState<string | null>(null);
 
   function loadProjects() {
     setLoading(true);
@@ -46,30 +47,39 @@ function Projects({
       const projectStatus = deriveStatus(project.last_run_time);
       const matchesStatus =
         statusFilter === "all" || projectStatus === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesRevit =
+        !revitYearFilter ||
+        project.files.some((f) => f.software?.includes(revitYearFilter) ?? false);
+      return matchesSearch && matchesStatus && matchesRevit;
     });
-  }, [projects, search, statusFilter]);
+  }, [projects, search, statusFilter, revitYearFilter]);
 
   const stats = useMemo(() => {
-    const totalProjects = projects.length;
-    const activeProjects = projects.filter(
-      (p) => deriveStatus(p.last_run_time) === "active",
-    ).length;
-    const inReviewProjects = projects.filter(
-      (p) => deriveStatus(p.last_run_time) === "in_review",
-    ).length;
-    const totalElements = projects.reduce(
-      (sum, p) => sum + getTotalElements(p.counts),
-      0,
-    );
-    return { totalProjects, activeProjects, inReviewProjects, totalElements };
+    return { totalProjects: projects.length };
+  }, [projects]);
+
+  const revitYearOptions = useMemo(() => {
+    const countMap = new Map<string, number>();
+    for (const project of projects) {
+      const seenYears = new Set<string>();
+      for (const file of project.files) {
+        const match = file.software?.match(/20\d{2}/);
+        if (match) seenYears.add(match[0]);
+      }
+      for (const yr of seenYears) {
+        countMap.set(yr, (countMap.get(yr) ?? 0) + 1);
+      }
+    }
+    return Array.from(countMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([year, count]) => ({ year, count }));
   }, [projects]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-stone-200 border-t-[#ce1b22]" />
-        <span className="ml-3 text-stone-500">Loading projects…</span>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#CFCCCC] border-t-[#CE1B22]" />
+        <span className="ml-3 text-[#5C5D61]">Loading projects…</span>
       </div>
     );
   }
@@ -80,10 +90,11 @@ function Projects({
         <h2 className="text-xl font-bold text-red-700">
           Failed to load projects
         </h2>
-        <p className="mt-2 text-sm text-red-600">{error}</p>
+        <p className="mt-2 text-red-600" style={{ fontSize: "14.67px" }}>{error}</p>
         <button
           onClick={loadProjects}
-          className="mt-4 rounded-lg bg-[#ce1b22] px-4 py-2 text-sm font-bold text-white hover:bg-[#ad151b]"
+          className="mt-4 rounded-lg bg-[#CE1B22] px-4 py-2 font-bold text-white hover:bg-[#ad151b]"
+          style={{ fontSize: "14.67px" }}
         >
           Retry
         </button>
@@ -95,74 +106,48 @@ function Projects({
     <>
       <header className="mb-6 flex flex-col justify-between gap-5 md:flex-row md:items-start">
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-stone-500">
+          {/* Eyebrow label — brand Dark Grey, uppercase */}
+          <p
+            className="mb-2 font-bold uppercase tracking-[0.18em] text-[#5C5D61]"
+            style={{ fontSize: "11px" }}
+          >
             Projects
           </p>
 
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
+          {/* Headline — 30 pt = 40 px */}
+          <h1
+            className="font-bold tracking-tight text-[#231F20]"
+            style={{ fontSize: "40px", lineHeight: "1.15" }}
+          >
             Project Dashboard
           </h1>
 
-          <p className="mt-2 max-w-2xl leading-6 text-stone-500">
+          {/* Body copy — 11 pt = 14.67 px */}
+          <p
+            className="mt-2 max-w-2xl text-[#5C5D61]"
+            style={{ fontSize: "14.67px", lineHeight: "1.55" }}
+          >
             All structural projects ingested from Revit. Review models, levels,
             elements, and load rundowns from one workspace.
           </p>
         </div>
       </header>
-
-      <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            Total Projects
-          </p>
-          <h3 className="my-3 text-3xl font-bold">{stats.totalProjects}</h3>
-          <span className="text-sm text-stone-500">Across all clients</span>
-        </div>
-
-        <div className="rounded-xl border border-l-4 border-stone-200 border-l-[#ce1b22] bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            Active
-          </p>
-          <h3 className="my-3 text-3xl font-bold">{stats.activeProjects}</h3>
-          <span className="text-sm text-stone-500">In production review</span>
-        </div>
-
-        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            In Review
-          </p>
-          <h3 className="my-3 text-3xl font-bold">{stats.inReviewProjects}</h3>
-          <span className="text-sm text-stone-500">
-            Awaiting engineer sign-off
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            Structural Elements
-          </p>
-          <h3 className="my-3 text-3xl font-bold">
-            {stats.totalElements.toLocaleString()}
-          </h3>
-          <span className="text-sm text-stone-500">
-            Columns · Walls · Beams · Floors
-          </span>
-        </div>
-      </section>
-
-      <section className="mb-5 flex flex-col gap-3 md:flex-row">
+     {/* Search / filter bar */}
+      <section className="mb-5 flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <input
           type="text"
           placeholder="Search project name, code, location..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-11 w-full rounded-lg border border-stone-300 bg-white px-4 text-sm outline-none transition placeholder:text-stone-400 focus:border-[#ce1b22] focus:ring-2 focus:ring-[#ce1b22]/10 md:max-w-md"
+          className="h-11 w-full min-w-0 flex-1 rounded-lg border border-[#CFCCCC] bg-white px-4 outline-none transition placeholder:text-[#5C5D61] focus:border-[#CE1B22] focus:ring-2 focus:ring-[#CE1B22]/10"
+          style={{ fontSize: "14.67px", color: "#231F20" }}
         />
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-11 rounded-lg border border-stone-300 bg-white px-4 text-sm outline-none transition focus:border-[#ce1b22] focus:ring-2 focus:ring-[#ce1b22]/10 md:w-44"
+          className="h-11 w-full rounded-lg border border-[#CFCCCC] bg-white px-4 outline-none transition focus:border-[#CE1B22] focus:ring-2 focus:ring-[#CE1B22]/10 sm:w-44 sm:flex-shrink-0"
+          style={{ fontSize: "14.67px", color: "#231F20" }}
         >
           <option value="all">All statuses</option>
           <option value="active">Active</option>
@@ -171,11 +156,64 @@ function Projects({
           <option value="archived">Archived</option>
         </select>
 
-        <button className="h-11 rounded-lg bg-[#ce1b22] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#ad151b]">
+        <button
+          className="h-11 w-full rounded-lg bg-[#CE1B22] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#ad151b] sm:w-auto sm:flex-shrink-0"
+          style={{ fontSize: "14.67px" }}
+        >
           + New Project
         </button>
       </section>
+      {/* Stat cards */}
+      <section className="mb-6 grid gap-4 sm:grid-cols-2">
+        {/* Total Projects */}
+        <div className="rounded-xl border border-[#CFCCCC] bg-white p-5 shadow-sm">
+          <p className="font-bold uppercase tracking-wider text-[#5C5D61]" style={{ fontSize: "11px" }}>
+            Total Projects
+          </p>
+          <p className="my-3 font-bold text-[#231F20]" style={{ fontSize: "30px" }}>
+            {stats.totalProjects}
+          </p>
+          <span className="text-[#5C5D61]" style={{ fontSize: "14.67px" }}>Across all clients</span>
+        </div>
 
+        {/* Autodesk Revit Version filter */}
+        <div className="rounded-xl border border-[#CFCCCC] bg-white p-5 shadow-sm">
+          <p className="mb-3 font-bold uppercase tracking-wider text-[#5C5D61]" style={{ fontSize: "11px" }}>
+            Autodesk Revit Version
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setRevitYearFilter(null)}
+              className={`rounded-lg border px-3 py-1.5 font-bold transition ${
+                revitYearFilter === null
+                  ? "border-[#CE1B22] bg-[#CE1B22] text-white"
+                  : "border-[#CFCCCC] bg-white text-[#5C5D61] hover:border-[#CE1B22] hover:text-[#CE1B22]"
+              }`}
+              style={{ fontSize: "12px" }}
+            >
+              All
+            </button>
+            {revitYearOptions.map(({ year, count }) => (
+              <button
+                key={year}
+                onClick={() => setRevitYearFilter(year)}
+                className={`rounded-lg border px-3 py-1.5 font-bold transition ${
+                  revitYearFilter === year
+                    ? "border-[#CE1B22] bg-[#CE1B22] text-white"
+                    : "border-[#CFCCCC] bg-white text-[#5C5D61] hover:border-[#CE1B22] hover:text-[#CE1B22]"
+                }`}
+                style={{ fontSize: "12px" }}
+              >
+                {year} ({count})
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+     
+
+      {/* Project cards */}
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {filteredProjects.map((project) => {
           const status = deriveStatus(project.last_run_time);
@@ -183,9 +221,10 @@ function Projects({
             <article
               key={project.number}
               onClick={() => onSelectProject(project)}
-              className="cursor-pointer overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-xl"
+              className="cursor-pointer overflow-hidden rounded-xl border border-[#CFCCCC] bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-xl"
             >
-              <div className="relative h-28 border-b border-stone-200 bg-[#f7eee9]">
+              {/* Card banner */}
+              <div className="relative h-28 border-b border-[#CFCCCC] bg-[#f7eee9]">
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(48,45,39,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(48,45,39,0.06)_1px,transparent_1px)] bg-[size:18px_18px]" />
 
                 <span
@@ -194,28 +233,45 @@ function Projects({
                   {getStatusLabel(status)}
                 </span>
 
-                <div className="absolute bottom-5 right-7 h-12 w-20 -skew-y-12 border-2 border-stone-500/50">
-                  <div className="h-1/3 border-b border-stone-500/30" />
-                  <div className="h-1/3 border-b border-stone-500/30" />
+                <div className="absolute bottom-5 right-7 h-12 w-20 -skew-y-12 border-2 border-[#5C5D61]/50">
+                  <div className="h-1/3 border-b border-[#5C5D61]/30" />
+                  <div className="h-1/3 border-b border-[#5C5D61]/30" />
                   <div className="h-1/3" />
                 </div>
               </div>
 
+              {/* Card body */}
               <div className="p-5">
-                <p className="mb-2 text-xs font-extrabold uppercase tracking-widest text-stone-500">
+                {/* Project number — eyebrow */}
+                <p
+                  className="mb-2 font-extrabold uppercase tracking-widest text-[#5C5D61]"
+                  style={{ fontSize: "11px" }}
+                >
                   {project.number}
                 </p>
 
-                <h2 className="mb-4 text-xl font-bold tracking-tight">
+                {/* Project name — sub-header 13 pt */}
+                <h2
+                  className="mb-4 font-bold tracking-tight text-[#231F20]"
+                  style={{ fontSize: "17.33px" }}
+                >
                   {project.job_name ?? project.number}
                 </h2>
 
-                <div className="mb-5 grid gap-2 text-sm text-stone-500">
+                {/* Location / lead — body 11 pt */}
+                <div
+                  className="mb-5 grid gap-2 text-[#5C5D61]"
+                  style={{ fontSize: "14.67px" }}
+                >
                   {project.address && <p>Location: {project.address}</p>}
                   <p>Lead: {project.designer ?? "—"}</p>
                 </div>
 
-                <div className="flex flex-col justify-between gap-2 border-t border-stone-200 pt-4 text-xs text-stone-500 sm:flex-row">
+                {/* Footer row */}
+                <div
+                  className="flex flex-col justify-between gap-2 border-t border-[#CFCCCC] pt-4 text-[#5C5D61] sm:flex-row"
+                  style={{ fontSize: "12px" }}
+                >
                   <span>
                     {getTotalElements(project.counts).toLocaleString()} elements
                     · {project.file_count}{" "}
@@ -230,10 +286,12 @@ function Projects({
       </section>
 
       {filteredProjects.length === 0 && (
-        <div className="mt-10 rounded-xl border border-dashed border-stone-300 bg-white p-8 text-center">
-          <h2 className="text-xl font-bold">No projects found</h2>
-          <p className="mt-2 text-stone-500">
-            Try changing the search text or status filter.
+        <div className="mt-10 rounded-xl border border-dashed border-[#CFCCCC] bg-white p-8 text-center">
+          <h2 className="font-bold text-[#231F20]" style={{ fontSize: "17.33px" }}>
+            No projects found
+          </h2>
+          <p className="mt-2 text-[#5C5D61]" style={{ fontSize: "14.67px" }}>
+            Try changing the search text, status filter, or Revit year.
           </p>
         </div>
       )}

@@ -1,1 +1,42 @@
 @import "tailwindcss";
+
+@theme {
+  /* Brand font — Source Sans Pro (web name: Source Sans 3), Calibri as Microsoft fallback */
+  --font-sans: 'Source Sans 3', Calibri, 'Source Sans Pro', sans-serif;
+
+  /* Brand colour palette */
+  --color-brand-red:    #CE1B22;
+  --color-charcoal:     #302D27;
+  --color-brand-black:  #231F20;
+  --color-dark-grey:    #5C5D61;
+  --color-light-grey:   #CFCCCC;
+}
+
+@layer base {
+  html {
+    font-family: 'Source Sans 3', Calibri, 'Source Sans Pro', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    /* 11 pt body text (11 × 1.333 = 14.67 px) */
+    font-size: 14.67px;
+    line-height: 1.55;
+    color: #231F20;
+  }
+
+  /* Headline — 30 pt (30 × 1.333 = 40 px) */
+  h1 {
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  /* Sub-header — 13 pt (13 × 1.333 = 17.33 px) */
+  h2, h3 {
+    font-size: 17.33px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+}

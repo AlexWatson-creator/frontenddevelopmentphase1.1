@@ -63,12 +63,14 @@ function vbStr(vb: ViewBox): string {
 
 function toSVGCoords(
   e: React.MouseEvent,
-  svg: SVGSVGElement
+  svg: SVGSVGElement,
+  group?: SVGGElement | null
 ): { x: number; y: number } {
   const pt = svg.createSVGPoint();
   pt.x = e.clientX;
   pt.y = e.clientY;
-  const ctm = svg.getScreenCTM();
+  const target: SVGSVGElement | SVGGElement = group ?? svg;
+  const ctm = target.getScreenCTM();
   if (!ctm) return { x: 0, y: 0 };
   const r = pt.matrixTransform(ctm.inverse());
   return { x: r.x, y: r.y };
@@ -194,6 +196,7 @@ export default function RundownWorkspace({
   const [tableSaveError, setTableSaveError] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const contentGroupRef = useRef<SVGGElement>(null);
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -381,7 +384,7 @@ export default function RundownWorkspace({
     if (!svg) return;
     const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
     // Zoom toward the mouse cursor in SVG coords
-    const pt = toSVGCoords(e as unknown as React.MouseEvent<SVGSVGElement>, svg);
+    const pt = toSVGCoords(e as unknown as React.MouseEvent<SVGSVGElement>, svg, contentGroupRef.current);
     setViewBox((vb) => {
       const nw = vb.w * factor;
       const nh = vb.h * factor;
@@ -432,7 +435,7 @@ export default function RundownWorkspace({
     if (selectedTool !== "Rect" || !canDraw || !selectedLoadRowId) return;
     const svg = svgRef.current;
     if (!svg) return;
-    setRectStart(toSVGCoords(e, svg));
+    setRectStart(toSVGCoords(e, svg, contentGroupRef.current));
     setRectPreview(null);
   }
 
@@ -453,7 +456,7 @@ export default function RundownWorkspace({
       return;
     }
 
-    const c = toSVGCoords(e, svg);
+    const c = toSVGCoords(e, svg, contentGroupRef.current);
     setCoords(c);
     setMousePos(c);
 
@@ -504,7 +507,7 @@ export default function RundownWorkspace({
     if (e.detail !== 1 || isPanning) return;
     const svg = svgRef.current;
     if (!svg) return;
-    const c = toSVGCoords(e, svg);
+    const c = toSVGCoords(e, svg, contentGroupRef.current);
     if (selectedTool === "Poly" && canDraw && selectedLoadRowId) {
       setPolyPoints((pts) => [...pts, c]);
     } else if (selectedTool === "Select") {
@@ -604,6 +607,20 @@ export default function RundownWorkspace({
     : selectedTool === "Select"
     ? "default"
     : "crosshair";
+
+  // Y-flip: SVG Y increases down but BIM Y increases up — flip the content group
+  // so the plan renders in the correct architectural orientation.
+  const flipTransform = useMemo(() => {
+    if (!levelElements) return "scale(1,1)";
+    const ys: number[] = [];
+    levelElements.columns.forEach((c) => ys.push(c.y));
+    levelElements.walls.forEach((w) => ys.push(w.y1, w.y2));
+    levelElements.grids.forEach((g) => ys.push(g.y1, g.y2));
+    if (ys.length === 0) return "scale(1,1)";
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return `translate(0, ${minY + maxY}) scale(1,-1)`;
+  }, [levelElements]);
 
   // ── Slab geometry ─────────────────────────────────────────────────────────
 
@@ -998,7 +1015,8 @@ export default function RundownWorkspace({
               fill="url(#rw-grid)"
             />
 
-            {/* ── STRUCTURAL ELEMENTS FROM BACKEND ── */}
+            {/* ── STRUCTURAL ELEMENTS — wrapped in Y-flip group ── */}
+            <g ref={contentGroupRef} transform={flipTransform}>
 
             {/* Slab boundary — subtle fill only */}
             {layers.slabs && slabPts && slabPts.length > 0 && (
@@ -1011,16 +1029,23 @@ export default function RundownWorkspace({
 
             {/* Slab openings */}
             {layers.slabs &&
-              openingPts.map((pts, i) =>
-                pts.length > 0 ? (
-                  <polygon
-                    key={`opening-${i}`}
-                    points={ptsToStr(pts)}
-                    fill="#e5e2dc"
-                    stroke="none"
-                  />
-                ) : null
-              )}
+              openingPts.map((pts, i) => {
+                if (pts.length === 0) return null;
+                const xs = pts.map(p => p.x);
+                const ys = pts.map(p => p.y);
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                return (
+                  <g key={`opening-${i}`}>
+                    <polygon points={ptsToStr(pts)} fill="#e5e2dc" stroke="none" />
+                    <polygon points={ptsToStr(pts)} fill="none" stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
+                    <line x1={minX} y1={minY} x2={maxX} y2={maxY} stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
+                    <line x1={maxX} y1={minY} x2={minX} y2={maxY} stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
+                  </g>
+                );
+              })}
 
             {/* Grids */}
             {layers.grids &&
@@ -1034,7 +1059,9 @@ export default function RundownWorkspace({
                     opacity="0.6"
                   />
                   <text
-                    x={g.x1} y={g.y1 - 250}
+                    x={g.x1}
+                    y={-(Math.max(g.y1, g.y2) + 250)}
+                    transform="scale(1,-1)"
                     fill="#8b9bb4"
                     fontSize="400"
                     fontWeight="bold"
@@ -1045,65 +1072,93 @@ export default function RundownWorkspace({
                 </g>
               ))}
 
-            {/* Walls — rendered as rotated dashed rectangles showing the wall footprint */}
-            {layers.walls &&
-              (levelElements?.walls ?? []).map((w, i) => {
-                const dx = w.x2 - w.x1;
-                const dy = w.y2 - w.y1;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                if (len < 1) return null;
-                const cx = (w.x1 + w.x2) / 2;
-                const cy = (w.y1 + w.y2) / 2;
-                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-                const t = (w.thickness ?? 200);
-                const label = w.mark ?? String(w.element_id);
-                return (
-                  <g key={`wall-${i}`} transform={`rotate(${angle},${cx},${cy})`}>
-                    <rect
-                      x={cx - len / 2}
-                      y={cy - t / 2}
-                      width={len}
-                      height={t}
-                      fill="none"
-                      stroke="#CE1B22"
-                      strokeWidth="22"
-                      strokeDasharray="120 60"
-                    />
-                    {/* Label centered on wall */}
-                    <text
-                      x={cx}
-                      y={cy - t / 2 - 60}
-                      fill="#CE1B22"
-                      fontSize="220"
-                      fontWeight="600"
-                      textAnchor="middle"
-                      transform={`rotate(${-angle},${cx},${cy - t / 2 - 60})`}
-                    >
-                      {label}
-                    </text>
-                  </g>
-                );
-              })}
+            {/* ── WALLS ─────────────────────────────────────────────────────────
+                 Rendering strategy:
+                 1. Sort longest-first so shorter (entering) walls are painted on top.
+                 2. Each wall renders fill THEN border inside the same <g>, so a shorter
+                    wall's opaque white fill paints over the longer wall's border at
+                    every junction — no overlapping lines, clean maze-like connections.
+                 3. Labels are in a second pass so they always sit above every fill/border.
+                 4. Label angle is normalized to (-90, 90] so text aligns with the wall
+                    direction and is never upside-down (vertical walls → bottom-to-top).
+            ──────────────────────────────────────────────────────────────────── */}
+            {layers.walls && (() => {
+              type WGeo = {
+                len: number; cx: number; cy: number;
+                angle: number; labelAngle: number;
+                t: number; fontSize: number; label: string;
+              };
 
-            {/* Columns — dashed rectangle outline + X mark + label */}
+              const geos: WGeo[] = (levelElements?.walls ?? [])
+                .flatMap(w => {
+                  const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+                  const len = Math.hypot(dx, dy);
+                  if (len < 1) return [];
+                  const cx = (w.x1 + w.x2) / 2, cy = (w.y1 + w.y2) / 2;
+                  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                  // Normalize label angle to (-90, 90] — text aligns with wall, never upside-down
+                  let labelAngle = angle;
+                  if (labelAngle >= 90)  labelAngle -= 180;
+                  if (labelAngle < -90)  labelAngle += 180;
+                  const t = w.thickness ?? 200;
+                  // Font scaled to wall thickness, capped so it fits inside the band
+                  const fontSize = Math.max(60, Math.min(t * 0.62, len * 0.08, 260));
+                  const label = w.mark ?? String(w.element_id);
+                  return [{ len, cx, cy, angle, labelAngle, t, fontSize, label }];
+                })
+                .sort((a, b) => b.len - a.len); // longest first → shorter walls paint on top
+
+              return (
+                <>
+                  {/* Pass 1 — fill + border per wall (interleaved so white fill of a
+                      shorter wall erases the longer wall's border at junctions) */}
+                  {geos.map((g, i) => {
+                    const rx = g.cx - g.len / 2, ry = g.cy - g.t / 2;
+                    return (
+                      <g key={`wall-${i}`} transform={`rotate(${g.angle},${g.cx},${g.cy})`}>
+                        {/* Opaque white fill — covers grid and any underlying borders */}
+                        <rect x={rx} y={ry} width={g.len} height={g.t} fill="white" />
+                        {/* Dashed red border */}
+                        <rect x={rx} y={ry} width={g.len} height={g.t}
+                          fill="none" stroke="#CE1B22" strokeWidth="20" strokeDasharray="120 55" />
+                      </g>
+                    );
+                  })}
+
+                  {/* Pass 2 — labels on top of everything, aligned with wall direction */}
+                  {geos.map((g, i) => {
+                    // Skip if label won't visually fit inside the band
+                    const approxTextLen = g.label.length * g.fontSize * 0.6;
+                    if (approxTextLen > g.len * 0.92 || g.t < 100) return null;
+                    return (
+                      <text key={`wlbl-${i}`}
+                        x={g.cx} y={-g.cy}
+                        fill="#CE1B22"
+                        fontSize={g.fontSize}
+                        fontWeight="600"
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        transform={`scale(1,-1) rotate(${g.labelAngle},${g.cx},${-g.cy})`}
+                      >{g.label}</text>
+                    );
+                  })}
+                </>
+              );
+            })()}
+
+            {/* Columns — dashed outline only, no X marks, label centered inside */}
             {layers.columns &&
               (levelElements?.columns ?? []).map((c, i) => {
                 const label = c.mark ?? String(c.element_id);
                 if (c.d) {
                   const r = c.d / 2;
-                  const o = r * 0.68; // X offset for circle (~cos45°·r)
                   return (
                     <g key={`col-${i}`}>
-                      <circle
-                        cx={c.x} cy={c.y} r={r}
-                        fill="none"
-                        stroke="#CE1B22"
-                        strokeWidth="22"
-                        strokeDasharray="120 60"
-                      />
-                      <line x1={c.x - o} y1={c.y - o} x2={c.x + o} y2={c.y + o} stroke="#CE1B22" strokeWidth="22" />
-                      <line x1={c.x + o} y1={c.y - o} x2={c.x - o} y2={c.y + o} stroke="#CE1B22" strokeWidth="22" />
-                      <text x={c.x} y={c.y - r - 60} fill="#CE1B22" fontSize="220" fontWeight="600" textAnchor="middle">
+                      <circle cx={c.x} cy={c.y} r={r} fill="white"
+                        stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
+                      <text x={c.x} y={-c.y} transform="scale(1,-1)"
+                        fill="#CE1B22" fontSize={Math.min(r * 0.9, 260)}
+                        fontWeight="600" textAnchor="middle" dominantBaseline="central">
                         {label}
                       </text>
                     </g>
@@ -1114,29 +1169,15 @@ export default function RundownWorkspace({
                 const x0 = c.x - bw / 2;
                 const y0 = c.y - bh / 2;
                 return (
-                  <g
-                    key={`col-${i}`}
-                    transform={c.rotation ? `rotate(${c.rotation},${c.x},${c.y})` : undefined}
+                  <g key={`col-${i}`}
+                    transform={c.rotation ? `rotate(${-c.rotation},${c.x},${c.y})` : undefined}
                   >
-                    <rect
-                      x={x0} y={y0} width={bw} height={bh}
-                      fill="none"
-                      stroke="#CE1B22"
-                      strokeWidth="22"
-                      strokeDasharray="120 60"
-                    />
-                    {/* X mark */}
-                    <line x1={x0} y1={y0} x2={x0 + bw} y2={y0 + bh} stroke="#CE1B22" strokeWidth="22" />
-                    <line x1={x0 + bw} y1={y0} x2={x0} y2={y0 + bh} stroke="#CE1B22" strokeWidth="22" />
-                    {/* Label above */}
-                    <text
-                      x={c.x}
-                      y={y0 - 60}
-                      fill="#CE1B22"
-                      fontSize="220"
-                      fontWeight="600"
-                      textAnchor="middle"
-                    >
+                    <rect x={x0} y={y0} width={bw} height={bh} fill="white" />
+                    <rect x={x0} y={y0} width={bw} height={bh}
+                      fill="none" stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
+                    <text x={c.x} y={-c.y} transform="scale(1,-1)"
+                      fill="#CE1B22" fontSize={Math.min(bw, bh) * 0.52}
+                      fontWeight="600" textAnchor="middle" dominantBaseline="central">
                       {label}
                     </text>
                   </g>
@@ -1181,7 +1222,8 @@ export default function RundownWorkspace({
                     {rowName && (
                       <text
                         x={(area.x ?? 0) + (area.width ?? 0) / 2}
-                        y={(area.y ?? 0) + (area.height ?? 0) / 2}
+                        y={-((area.y ?? 0) + (area.height ?? 0) / 2)}
+                        transform="scale(1,-1)"
                         textAnchor="middle"
                         dominantBaseline="middle"
                         fill="#CE1B22"
@@ -1203,7 +1245,8 @@ export default function RundownWorkspace({
                     <polygon points={ptsToStr(area.points)} {...clickProps} />
                     {rowName && (
                       <text
-                        x={cx} y={cy}
+                        x={cx} y={-cy}
+                        transform="scale(1,-1)"
                         textAnchor="middle"
                         dominantBaseline="middle"
                         fill="#CE1B22"
@@ -1254,6 +1297,7 @@ export default function RundownWorkspace({
                 ))}
               </>
             )}
+            </g>{/* end Y-flip content group */}
           </svg>
 
           {/* Coordinate display */}

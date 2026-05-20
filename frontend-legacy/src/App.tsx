@@ -127,6 +127,8 @@ function Dashboard({
   const [page, setPage] = useState("projects");
   const [selectedProject, setSelectedProject] = useState<ProjectGroup | null>(null);
   const [rundownProject, setRundownProject] = useState<ProjectGroup | null>(null);
+  const [rundownFileId, setRundownFileId] = useState<number | undefined>(undefined);
+  const [rundownLevelId, setRundownLevelId] = useState<number | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const initials = user.name
@@ -276,7 +278,11 @@ function Dashboard({
           <ProjectDetail
             project={selectedProject}
             onBack={() => setSelectedProject(null)}
-            onRundown={() => setRundownProject(selectedProject)}
+            onRundown={(fileId, levelId) => {
+              setRundownFileId(fileId);
+              setRundownLevelId(levelId);
+              setRundownProject(selectedProject);
+            }}
           />
         )}
         {page === "projects" && !selectedProject && (
@@ -289,6 +295,8 @@ function Dashboard({
         <RundownWorkspace
           project={rundownProject}
           onBack={() => setRundownProject(null)}
+          initialFileId={rundownFileId}
+          initialLevelId={rundownLevelId}
         />
       )}
     </main>

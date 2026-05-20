@@ -122,9 +122,13 @@ function dbEntryToRow(e: LoadTableEntry): LoadRow {
 export default function RundownWorkspace({
   project,
   onBack,
+  initialFileId,
+  initialLevelId,
 }: {
   project: ProjectGroup;
   onBack: () => void;
+  initialFileId?: number;
+  initialLevelId?: number;
 }) {
   // ── Project / file / level data from backend ─────────────────────────────
 
@@ -244,12 +248,18 @@ export default function RundownWorkspace({
       .then((d) => {
         setDetail(d);
         if (d.files.length > 0) {
-          const firstFile = d.files[0];
-          setSelectedFileId(firstFile.id);
-          const sorted = [...firstFile.levels].sort((a, b) => b.elevation - a.elevation);
+          const targetFile = initialFileId
+            ? (d.files.find((f) => f.id === initialFileId) ?? d.files[0])
+            : d.files[0];
+          setSelectedFileId(targetFile.id);
+          const sorted = [...targetFile.levels].sort((a, b) => b.elevation - a.elevation);
           if (sorted.length > 0) {
-            setSelectedLevelId(sorted[0].id);
-            setBelowLevelId(sorted.length > 1 ? sorted[1].id : null);
+            const targetLevel = initialLevelId
+              ? (sorted.find((l) => l.id === initialLevelId) ?? sorted[0])
+              : sorted[0];
+            setSelectedLevelId(targetLevel.id);
+            const belowIdx = sorted.findIndex((l) => l.id === targetLevel.id);
+            setBelowLevelId(belowIdx >= 0 && belowIdx < sorted.length - 1 ? sorted[belowIdx + 1].id : null);
           }
         }
       })
@@ -954,7 +964,7 @@ export default function RundownWorkspace({
         </div>{/* end left sidebar outer wrapper */}
 
         {/* ── CENTER CANVAS ─────────────────────────────────────────────── */}
-        <div className="relative flex-1 overflow-hidden bg-[#eceae5]">
+        <div className="relative flex-1 overflow-hidden bg-[#9a9793]">
           {/* Loading overlay */}
           {isLoadingElements && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
@@ -1004,7 +1014,8 @@ export default function RundownWorkspace({
             {/* Grid background */}
             <defs>
               <pattern id="rw-grid" width="1000" height="1000" patternUnits="userSpaceOnUse">
-                <path d="M 1000 0 L 0 0 0 1000" fill="none" stroke="#d6d3cc" strokeWidth="12" />
+                <rect width="1000" height="1000" fill="#e8e5e2" />
+                <path d="M 1000 0 L 0 0 0 1000" fill="none" stroke="#e0ddd9" strokeWidth="12" />
               </pattern>
             </defs>
             <rect
@@ -1018,12 +1029,14 @@ export default function RundownWorkspace({
             {/* ── STRUCTURAL ELEMENTS — wrapped in Y-flip group ── */}
             <g ref={contentGroupRef} transform={flipTransform}>
 
-            {/* Slab boundary — subtle fill only */}
+            {/* Slab boundary */}
             {layers.slabs && slabPts && slabPts.length > 0 && (
               <polygon
                 points={ptsToStr(slabPts)}
-                fill="rgba(210,207,200,0.35)"
-                stroke="none"
+                fill="#f0ede8"
+                stroke="#000000"
+                strokeWidth={30}
+                strokeLinejoin="round"
               />
             )}
 
@@ -1039,7 +1052,7 @@ export default function RundownWorkspace({
                 const maxY = Math.max(...ys);
                 return (
                   <g key={`opening-${i}`}>
-                    <polygon points={ptsToStr(pts)} fill="#e5e2dc" stroke="none" />
+                    <polygon points={ptsToStr(pts)} fill="white" stroke="#000000" strokeWidth={30} strokeLinejoin="round" />
                     <polygon points={ptsToStr(pts)} fill="none" stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
                     <line x1={minX} y1={minY} x2={maxX} y2={maxY} stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
                     <line x1={maxX} y1={minY} x2={minX} y2={maxY} stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
@@ -1151,13 +1164,16 @@ export default function RundownWorkspace({
               (levelElements?.columns ?? []).map((c, i) => {
                 const label = c.mark ?? String(c.element_id);
                 if (c.d) {
-                  const r = c.d / 2;
+                  const s = c.d;
+                  const x0 = c.x - s / 2;
+                  const y0 = c.y - s / 2;
                   return (
                     <g key={`col-${i}`}>
-                      <circle cx={c.x} cy={c.y} r={r} fill="white"
-                        stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
+                      <rect x={x0} y={y0} width={s} height={s} fill="white" />
+                      <rect x={x0} y={y0} width={s} height={s}
+                        fill="none" stroke="#CE1B22" strokeWidth="22" strokeDasharray="120 60" />
                       <text x={c.x} y={-c.y} transform="scale(1,-1)"
-                        fill="#CE1B22" fontSize={Math.min(r * 0.9, 260)}
+                        fill="#CE1B22" fontSize={Math.min(s * 0.52, 260)}
                         fontWeight="600" textAnchor="middle" dominantBaseline="central">
                         {label}
                       </text>

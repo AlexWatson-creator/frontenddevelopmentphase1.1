@@ -201,6 +201,8 @@ def compute_tributary(
                 la_poly = shapely_wkt.loads(la_input.polygon_wkt)
             except Exception:
                 raise HTTPException(400, "Invalid load area WKT")
+            if not la_poly.is_valid:
+                la_poly = la_poly.buffer(0)
             if la_poly.is_empty:
                 continue
 

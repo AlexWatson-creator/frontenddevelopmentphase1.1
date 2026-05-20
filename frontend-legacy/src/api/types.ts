@@ -62,6 +62,14 @@ export function formatDate(isoString: string | null): string {
   return new Date(isoString).toLocaleDateString("en-CA");
 }
 
+export function formatDateTime(isoString: string | null): string {
+  if (!isoString) return "—";
+  const d = new Date(isoString);
+  const date = d.toLocaleDateString("en-CA");
+  const time = d.toLocaleTimeString("en-CA", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${date} ${time}`;
+}
+
 export function getTotalElements(counts: ElementCounts): number {
   return counts.columns + counts.walls + counts.beams + counts.floors;
 }

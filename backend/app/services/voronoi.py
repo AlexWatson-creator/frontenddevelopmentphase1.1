@@ -118,7 +118,7 @@ def _voronoi_finite_polygons_2d(
 
     center = vor.points.mean(axis=0)
     if radius is None:
-        radius = vor.points.ptp().max() * 2
+        radius = float(vor.points.max() - vor.points.min()) * 2
 
     # Map ridges for each point
     all_ridges: dict[int, list[tuple[int, int, int]]] = {}

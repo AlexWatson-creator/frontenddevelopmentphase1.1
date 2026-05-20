@@ -21,7 +21,7 @@ function ProjectDetail({
 }: {
   project: ProjectGroup;
   onBack: () => void;
-  onRundown: () => void;
+  onRundown: (fileId?: number, levelId?: number) => void;
 }) {
   const [detail, setDetail] = useState<ApiProjectDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
@@ -162,7 +162,7 @@ function ProjectDetail({
           {/* Action buttons */}
           <div className="flex shrink-0 gap-3">
             <button
-              onClick={onRundown}
+              onClick={() => onRundown()}
               className="rounded-lg bg-[#CE1B22] px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-[#ad151b]"
               style={{ fontSize: "14.67px" }}
             >
@@ -389,7 +389,8 @@ function ProjectDetail({
                             {file.levels.map((level: LevelWithCounts) => (
                               <tr
                                 key={level.id}
-                                className="odd:bg-white even:bg-[#f8f6f3] transition hover:brightness-95"
+                                className="odd:bg-white even:bg-[#f8f6f3] transition hover:brightness-95 cursor-pointer"
+                                onClick={() => onRundown(file.id, level.id)}
                               >
                                 <td className="px-5 py-3 font-semibold text-[#231F20]">
                                   {level.name}

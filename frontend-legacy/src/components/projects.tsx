@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchProjects } from "../api/projects";
 import {
   deriveStatus,
-  formatDate,
+  formatDateTime,
   getStatusClass,
   getStatusLabel,
   getTotalElements,
@@ -277,7 +277,7 @@ function Projects({
                     · {project.file_count}{" "}
                     {project.file_count === 1 ? "file" : "files"}
                   </span>
-                  <span>Updated {formatDate(project.last_run_time)}</span>
+                  <span>Updated {formatDateTime(project.last_run_time)}</span>
                 </div>
               </div>
             </article>

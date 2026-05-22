@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchUsers, updateUser, createUser, uploadUsersFromExcel } from "../api/users";
+import { fetchUsers, updateUser, createUser, uploadUsersFromExcel, deleteUser } from "../api/users";
 import type { UserRead } from "../api/users";
 import type { BulkUploadResult } from "../api/users";
 
@@ -7,6 +7,8 @@ import type { BulkUploadResult } from "../api/users";
 function Settings() {
   const [users, setUsers] = useState<UserRead[]>([]);
   const [confirmUser, setConfirmUser] = useState<UserRead | null>(null);
+  const [deleteTargetUser, setDeleteTargetUser] = useState<UserRead | null>(null);
+  const [deleteMasterPassword, setDeleteMasterPassword] = useState("");
   
 
   const [showUpload, setShowUpload]         = useState(false);
@@ -19,7 +21,8 @@ function Settings() {
     const saved = localStorage.getItem("currentUser");
     return saved ? (JSON.parse(saved) as UserRead) : null; 
   });
-  const isAdmin = loggedInUser?.role === "PLATFORM ADMIN";
+  const isAdmin = ["PLATFORM ADMIN", "PARTNER", "ASSOCIATE"].includes(loggedInUser?.role ?? "");
+  const canDelete = loggedInUser?.role === "PARTNER";
   
   const [showNewUser, setShowNewUser] = useState(false);
   const [newEmail, setNewEmail]       = useState("");
@@ -28,6 +31,8 @@ function Settings() {
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole]         = useState("STRUCTURAL DESIGNER");
 
+  const [showChangeRole, setShowChangeRole] = useState(false);
+  const [changeRoleTargetUser, setChangeRoleTargetUser] = useState<UserRead | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [changePasswordValue, setChangePasswordValue] = useState("");
 
@@ -36,7 +41,7 @@ function Settings() {
   }, []);
 
   function handleBanClick(user: UserRead) {
-    if (user.role === "PLATFORM ADMIN") {
+    if (["PLATFORM ADMIN", "PARTNER", "ASSOCIATE"].includes(user.role)) {
       alert("That is an admin account and cannot be Banned.");
     } else {
       setConfirmUser(user);
@@ -48,6 +53,35 @@ function Settings() {
       await updateUser(confirmUser.id, { is_banned: true });
       setConfirmUser(null);
       fetchUsers().then(setUsers).catch((err) => { console.error("Failed to load users:", err); });
+    }
+  }
+
+  function handleDeleteClick(user: UserRead) {
+    setDeleteTargetUser(user);
+    setDeleteMasterPassword("");
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTargetUser) return;
+    try {
+      await deleteUser(deleteTargetUser.id, deleteMasterPassword);
+      setDeleteTargetUser(null);
+      setDeleteMasterPassword("");
+      fetchUsers().then(setUsers).catch((err) => { console.error("Failed to load users:", err); });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete user");
+    }
+  }
+
+  async function handleChangeRole() {
+    if (!changeRoleTargetUser) return;
+    try {
+      await updateUser(changeRoleTargetUser.id, { role: newRole });
+      setShowChangeRole(false);
+      setChangeRoleTargetUser(null);
+      fetchUsers().then(setUsers).catch((err) => { console.error("Failed to load users:", err); });
+    } catch (err) {
+      alert(`Failed to change role: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -129,6 +163,39 @@ function Settings() {
         </div>
       )}
 
+      {/* Delete user dialog */}
+      {deleteTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-6 shadow-lg">
+            <h2 className="text-base font-semibold text-[#302d27]">Permanently delete this user?</h2>
+            <p className="mt-2 text-sm text-stone-500">
+              <span className="font-medium text-[#302d27]">{deleteTargetUser.email}</span> will be permanently removed and cannot be recovered.
+            </p>
+            <div className="mt-4 flex flex-col gap-1">
+              <label className="text-xs font-medium text-stone-500">Master password</label>
+              <input
+                type="password"
+                value={deleteMasterPassword}
+                onChange={(e) => setDeleteMasterPassword(e.target.value)}
+                placeholder="Enter master password"
+                className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]"/>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => { setDeleteTargetUser(null); setDeleteMasterPassword(""); }}
+                className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-[#302d27] transition hover:bg-stone-50">
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="rounded-lg bg-[#ce1b22] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b01820]">
+                Delete user
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* New user dialog */}
       {showNewUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -177,9 +244,16 @@ function Settings() {
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value)}
                   className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]">
-                  <option value="STRUCTURAL DESIGNER">Structural Designer</option>
-                  <option value="BIM DESIGNER">BIM Designer</option>
                   <option value="PLATFORM ADMIN">Platform Admin</option>
+                  <option value="STRUCTURAL DESIGNER">Structural Designer</option>
+                  <option value="BIM DEVELOPER">BIM Developer</option>
+                  <option value="INSPECTOR">Inspector</option>
+                  <option value="ASSOCIATE">Associate</option>
+                  <option value="DRAFTER">Drafter</option>
+                  <option value="PROPOSAL">Proposal</option>
+                  <option value="RESEARCH">Research</option>
+                  <option value="LEGAL">Legal</option>
+                  <option value="PARTNER">Partner</option>
                 </select>
               </div>
             </div>
@@ -246,7 +320,49 @@ function Settings() {
 
 
 
-      {showChangePassword && (
+      {showChangeRole && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-6 shadow-lg">
+              <h2 className="text-base font-semibold text-[#302d27]">Change Role</h2>
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-stone-500">Role</label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value)}
+                    className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]">
+                    <option value="PLATFORM ADMIN">Platform Admin</option>
+                    <option value="STRUCTURAL DESIGNER">Structural Designer</option>
+                    <option value="BIM DEVELOPER">BIM Developer</option>
+                    <option value="INSPECTOR">Inspector</option>
+                    <option value="ASSOCIATE">Associate</option>
+                    <option value="DRAFTER">Drafter</option>
+                    <option value="PROPOSAL">Proposal</option>
+                    <option value="RESEARCH">Research</option>
+                    <option value="LEGAL">Legal</option>
+                    <option value="PARTNER">Partner</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowChangeRole(false); setChangeRoleTargetUser(null); }}
+                  className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-[#302d27] transition hover:bg-stone-50">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleChangeRole}
+                  className="rounded-lg bg-[#302d27] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4a4540]">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+
+        {showChangePassword && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-6 shadow-lg">
               <h2 className="text-base font-semibold text-[#302d27]">Change password</h2>
@@ -276,6 +392,7 @@ function Settings() {
             </div>
           </div>
         )}
+
 
 
 
@@ -327,23 +444,39 @@ function Settings() {
                     {user.is_banned ? (
                       <span className="py-2 text-sm text-[#302d27]">Banned</span>
                     ) : (
-                      <span>{user.role === "STRUCTURAL DESIGNER" ? "Structural Designer" : user.role === "BIM DESIGNER" ? "BIM Designer" : "Platform Admin"}</span>
+                      <span>{user.role.split(" ").map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")}</span>
                     )}
                   </td>
                   <td className="py-2 text-sm text-[#302d27]">
-                    {user.is_banned ? (
-                      <button
-                        onClick={() => handleUnban(user)}
-                        className="text-sm font-semibold text-stone-500 transition hover:underline">
-                        Unban
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleBanClick(user)}
-                        className="text-sm font-semibold text-[#ce1b22] transition hover:underline">
-                        Ban
-                      </button>
-                    )}
+                    <div className="flex gap-3">
+                      {user.is_banned ? (
+                        <button
+                          onClick={() => handleUnban(user)}
+                          className="text-sm font-semibold text-stone-500 transition hover:underline">
+                          Unban
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleBanClick(user)}
+                          className="text-sm font-semibold text-[#ce1b22] transition hover:underline">
+                          Ban
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => { setChangeRoleTargetUser(user); setNewRole(user.role); setShowChangeRole(true); }}
+                          className="text-sm font-semibold text-stone-400 transition hover:text-[#ce1b22] hover:underline">
+                          Change Role
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDeleteClick(user)}
+                          className="text-sm font-semibold text-stone-400 transition hover:text-[#ce1b22] hover:underline">
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -59,6 +59,15 @@ export async function createUser(
 
 
 
+export async function deleteUser(id: number, masterPassword: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/users/${id}?master_password=${masterPassword}`, {
+    method: "DELETE",
+  });
+  if (res.status === 403) throw new Error("Invalid master password");
+  if (res.status === 404) throw new Error("User not found");
+  if (!res.ok) throw new Error(`Failed to delete user (${res.status})`);
+}
+
 export interface BulkUploadError {
   row: number;
   email: string;

@@ -48,3 +48,11 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[UserRe
     if not pwd_context.verify(password, user.password_hash):
         return None
     return UserRead.model_validate(user)
+
+def delete_user(db: Session, user_id: int) -> bool:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return False
+    db.delete(user)
+    db.commit()
+    return True

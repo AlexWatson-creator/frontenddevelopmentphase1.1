@@ -848,10 +848,9 @@ BEGIN
         role            VARCHAR(30)     NOT NULL DEFAULT 'STRUCTURAL DESIGNER',
         is_banned       BIT             NOT NULL DEFAULT 0,
         created_at      DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
-        updated_at      DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
 
         CONSTRAINT CK_users_role CHECK (
-            role IN ('PLATFORM ADMIN', 'STRUCTURAL DESIGNER', 'BIM DESIGNER')
+            role IN ('PLATFORM ADMIN', 'STRUCTURAL DESIGNER', 'BIM DEVELOPER', 'INSPECTOR', 'ASSOCIATE', 'DRAFTER', 'PROPOSAL', 'RESEARCH', 'LEGAL', 'PARTNER')
         ),
         CONSTRAINT UQ_users_email UNIQUE (email)
     );

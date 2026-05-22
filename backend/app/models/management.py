@@ -39,4 +39,3 @@ class User(Base):
     role           = Column(String(30), nullable=False, default="STRUCTURAL DESIGNER")
     is_banned      = Column(Boolean, nullable=False, default=False)
     created_at     = Column(DATETIME2, nullable=False, server_default="getutcdate()")
-    updated_at     = Column(DATETIME2, nullable=False, server_default="getutcdate()")

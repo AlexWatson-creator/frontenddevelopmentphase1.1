@@ -99,7 +99,7 @@ function App() {
             </a>
           )}
         </nav>
-        {/* User section — pinned to bottom */}
+
         <div className="mt-auto border-t border-white/10 pt-5">
           <div className="mb-3 flex items-center gap-3 px-1">
             {loggedInUser ? (

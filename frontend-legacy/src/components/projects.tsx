@@ -19,6 +19,7 @@ function Projects({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [softwareFilter, setSoftwareFilter] = useState("");
 
   function loadProjects() {
     setLoading(true);
@@ -46,9 +47,12 @@ function Projects({
       const projectStatus = deriveStatus(project.last_run_time);
       const matchesStatus =
         statusFilter === "all" || projectStatus === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesSoftware =
+        !softwareFilter ||
+        project.files.some((f) => f.software === softwareFilter);
+      return matchesSearch && matchesStatus && matchesSoftware;
     });
-  }, [projects, search, statusFilter]);
+  }, [projects, search, statusFilter, softwareFilter]);
 
   const stats = useMemo(() => {
     const totalProjects = projects.length;
@@ -110,53 +114,13 @@ function Projects({
         </div>
       </header>
 
-      <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            Total Projects
-          </p>
-          <h3 className="my-3 text-3xl font-bold">{stats.totalProjects}</h3>
-          <span className="text-sm text-stone-500">Across all clients</span>
-        </div>
-
-        <div className="rounded-xl border border-l-4 border-stone-200 border-l-[#ce1b22] bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            Active
-          </p>
-          <h3 className="my-3 text-3xl font-bold">{stats.activeProjects}</h3>
-          <span className="text-sm text-stone-500">In production review</span>
-        </div>
-
-        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            In Review
-          </p>
-          <h3 className="my-3 text-3xl font-bold">{stats.inReviewProjects}</h3>
-          <span className="text-sm text-stone-500">
-            Awaiting engineer sign-off
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-500">
-            Structural Elements
-          </p>
-          <h3 className="my-3 text-3xl font-bold">
-            {stats.totalElements.toLocaleString()}
-          </h3>
-          <span className="text-sm text-stone-500">
-            Columns · Walls · Beams · Floors
-          </span>
-        </div>
-      </section>
-
       <section className="mb-5 flex flex-col gap-3 md:flex-row">
         <input
           type="text"
           placeholder="Search project name, code, location..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-11 w-full rounded-lg border border-stone-300 bg-white px-4 text-sm outline-none transition placeholder:text-stone-400 focus:border-[#ce1b22] focus:ring-2 focus:ring-[#ce1b22]/10 md:max-w-md"
+          className="h-11 w-full rounded-lg border border-stone-300 bg-white px-4 text-sm outline-none transition placeholder:text-stone-400 focus:border-[#ce1b22] focus:ring-2 focus:ring-[#ce1b22]/10 md:max-w-475"
         />
 
         <select
@@ -171,10 +135,71 @@ function Projects({
           <option value="archived">Archived</option>
         </select>
 
-        <button className="h-11 rounded-lg bg-[#ce1b22] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#ad151b]">
+        <button className="h-11 rounded-lg bg-[#ce1b22] px-4 py-3 font-bold text-white shadow-sm transition hover:bg-[#ad151b] md: w-35">
           + New Project
         </button>
       </section>
+      <section
+        aria-label="Project statistics"
+        className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2"
+      >
+        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+          <p
+            id="stat-total-label"
+            className="text-xs font-bold uppercase tracking-wider text-stone-500"
+          >
+            Total Projects
+          </p>
+          <p
+            aria-labelledby="stat-total-label"
+            className="my-3 text-3xl font-bold"
+          >
+            {stats.totalProjects}
+          </p>
+          <p className="text-sm text-stone-500">Across all clients</p>
+        </div>
+
+        <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
+          <p
+            id="revit-year-label"
+            className="text-xs font-bold uppercase tracking-wider text-stone-500"
+          >
+            Revit Year
+          </p>
+          <div
+            role="group"
+            aria-labelledby="revit-year-label"
+            className="mt-3 flex flex-wrap items-start gap-2"
+          >
+            <button
+              type="button"
+              className="rounded-xl border border-stone-200 bg-white p-2 text-sm shadow-sm transition hover:border-[#ce1b22] hover:text-[#ce1b22] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ce1b22]"
+              onClick={() => setSoftwareFilter("")}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-stone-200 bg-white p-2 text-sm shadow-sm transition hover:border-[#ce1b22] hover:text-[#ce1b22] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ce1b22]"
+              onClick={() => setSoftwareFilter("Autodesk Revit 2023")}
+            >
+              Revit 2023
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-stone-200 bg-white p-2 text-sm shadow-sm transition hover:border-[#ce1b22] hover:text-[#ce1b22] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ce1b22]"
+              onClick={() => setSoftwareFilter("Autodesk Revit 2025")}
+            >
+              Revit 2025
+            </button>
+          </div>
+          <p className="mt-3 text-sm text-stone-500">
+            Columns · Walls · Beams · Floors
+          </p>
+        </div>
+      </section>
+
+      
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {filteredProjects.map((project) => {

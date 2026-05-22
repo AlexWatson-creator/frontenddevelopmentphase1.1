@@ -9,6 +9,35 @@ import {
 } from "../api/types";
 import type { ProjectDetail as ApiProjectDetail, ProjectFileDetail, LevelWithCounts, ProjectGroup } from "../api/types";
 
+function Accordion({title, children}: {title: string, children: React.ReactNode}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-b border-stone-200">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between py-4 text-left text-sm font-medium text-stone-700 hover:bg-stone-100"
+      >
+        {title}
+        <svg
+          className={`h-5 w-5 transition-transform ${open ? "rotate-360" : "rotate-270"}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+      {open && <div className="py-4">{children}</div>}
+    </div>
+  );
+}
+
 function ProjectDetail({
   project,
   onBack,
@@ -21,6 +50,30 @@ function ProjectDetail({
   const [detail, setDetail] = useState<ApiProjectDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [copyStates, setCopyStates] = useState<Record<string, "idle" | "copied" | "error">>({});
+
+  function copyLevelTable(fileId: string, levels: LevelWithCounts[]) {
+    const headers = ["Level", "Elevation", "Height", "Col", "Wall", "Beam", "Floor"];
+    const rows = levels.map((level) => [
+      level.name,
+      `${Math.round(level.elevation).toLocaleString()} mm`,
+      level.story_height != null ? `${level.story_height.toLocaleString()} mm` : "—",
+      level.counts.columns > 0 ? String(level.counts.columns) : "—",
+      level.counts.walls > 0 ? String(level.counts.walls) : "—",
+      level.counts.beams > 0 ? String(level.counts.beams) : "—",
+      level.counts.floors > 0 ? String(level.counts.floors) : "—",
+    ]);
+    const tsv = [headers, ...rows].map((row) => row.join("\t")).join("\n");
+    navigator.clipboard.writeText(tsv)
+      .then(() => {
+        setCopyStates((prev) => ({ ...prev, [fileId]: "copied" }));
+        setTimeout(() => setCopyStates((prev) => ({ ...prev, [fileId]: "idle" })), 2000);
+      })
+      .catch(() => {
+        setCopyStates((prev) => ({ ...prev, [fileId]: "error" }));
+        setTimeout(() => setCopyStates((prev) => ({ ...prev, [fileId]: "idle" })), 2000);
+      });
+  }
 
   useEffect(() => {
     setLoadingDetail(true);
@@ -210,8 +263,21 @@ function ProjectDetail({
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-stone-400">
                         Levels
                       </p>
+                      <div className="flex shrink-0 flex-col items-end gap-2">
+                        <button
+                          onClick={() => copyLevelTable(String(file.id), file.levels)}
+                          className="text-sm font-semibold text-[#ce1b22] transition hover:underline"
+                        >
+                          {copyStates[String(file.id)] === "copied"
+                            ? "Copied!"
+                            : copyStates[String(file.id)] === "error"
+                            ? "Copy failed"
+                            : "Copy Table"}
+                        </button>
+                      </div>
                     </div>
 
+                  <Accordion title="">
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[600px] border-collapse text-left text-sm">
                         <thead className="bg-stone-50 text-xs uppercase tracking-wider text-stone-400">
@@ -229,7 +295,8 @@ function ProjectDetail({
                           {file.levels.map((level: LevelWithCounts) => (
                             <tr
                               key={level.id}
-                              className="transition hover:bg-stone-50"
+                              
+                              className="odd:bg-white even:bg-stone-50 odd:transition hover:bg-stone-50 even:transition hover:bg-stone-100"
                             >
                               <td className="px-5 py-3 font-semibold text-stone-800">
                                 {level.name}
@@ -267,6 +334,7 @@ function ProjectDetail({
                         </tbody>
                       </table>
                     </div>
+                  </Accordion>
                   </>
                 )}
 

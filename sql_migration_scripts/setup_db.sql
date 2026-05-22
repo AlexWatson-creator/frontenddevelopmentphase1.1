@@ -826,6 +826,37 @@ BEGIN
 END;
 GO
 
+----------------------------------------------------------------------
+-- User creation and storage.
+-- Shows user's email, role (platform_admin / structural_designer / bim_designer), and ban status.
+-- Can store new users.
+----------------------------------------------------------------------
+IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'management' AND TABLE_NAME = 'users')
+BEGIN
+    DROP TABLE management.users;
+END
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+               WHERE TABLE_SCHEMA = 'management' AND TABLE_NAME = 'users')
+BEGIN
+    CREATE TABLE management.users (
+        id              INT             IDENTITY(1,1) PRIMARY KEY,
+        email           VARCHAR(255)    NOT NULL,
+        password_hash   VARCHAR(255)    NOT NULL,
+        first_name      VARCHAR(100)    NOT NULL,
+        last_name       VARCHAR(100)    NOT NULL,
+        role            VARCHAR(30)     NOT NULL DEFAULT 'STRUCTURAL DESIGNER',
+        is_banned       BIT             NOT NULL DEFAULT 0,
+        created_at      DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+        updated_at      DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
+
+        CONSTRAINT CK_users_role CHECK (
+            role IN ('PLATFORM ADMIN', 'STRUCTURAL DESIGNER', 'BIM DESIGNER')
+        ),
+        CONSTRAINT UQ_users_email UNIQUE (email)
+    );
+END;
+GO
 
 -- ============================================================================
 PRINT 'JAPBIMDB setup complete. All management and design schema tables created.';

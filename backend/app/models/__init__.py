@@ -19,6 +19,7 @@ from app.models.dbo import (
 )
 from app.models.management import (
     ProjectMeta,
+    User,
 )
 from app.models.design import (
     LoadTable,
@@ -58,6 +59,7 @@ __all__ = [
     "Foundation",
     # management (READ-WRITE)
     "ProjectMeta",
+    "User",
     # design (READ-WRITE)
     "LoadTable",
     "LoadArea",

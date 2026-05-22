@@ -38,3 +38,9 @@ app.include_router(elements.router, prefix="/api")
 app.include_router(identity.router, prefix="/api")
 app.include_router(rundown.router, prefix="/api")
 app.include_router(chains.router, prefix="/api")
+
+# ---------------------------------------------------------------
+# User router
+from app.routers import users
+app.include_router(users.router, prefix="/api")
+# ---------------------------------------------------------------

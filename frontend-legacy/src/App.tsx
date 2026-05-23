@@ -10,7 +10,9 @@ import type { ProjectGroup } from "./api/types";
 import type { UserRead } from "./api/users";
 
 function App() {
-  const [page, setPage] = useState<"projects" | "rundown" | "settings" | "login">("projects");
+  const [page, setPage] = useState<"projects" | "rundown" | "settings" | "login">(() => {
+    return localStorage.getItem("currentUser") ? "projects" : "login";
+  });
   const [selectedProject, setSelectedProject] = useState<ProjectGroup | null>(null);
   const [loggedInUser, setLoggedInUser] = useState<UserRead | null>(() => {
     const saved = localStorage.getItem("currentUser");
@@ -37,12 +39,17 @@ function App() {
   function handleLogout() {
     localStorage.removeItem("currentUser");
     setLoggedInUser(null);
-    setPage("projects");
+    setPage("login");
+  }
+
+  function navigate(target: "projects" | "rundown" | "settings" | "login") {
+    if (!loggedInUser && target !== "login") return;
+    setPage(target);
   }
 
   return (
     <main className="min-h-screen bg-[#f8f6f3] text-[#302d27] lg:flex">
-      <aside className="flex flex-col bg-[#302d27] p-6 text-white lg:fixed lg:inset-y-0 lg:left-0 lg:w-64">
+      {page !== "login" && <aside className="flex flex-col bg-[#302d27] p-6 text-white lg:fixed lg:inset-y-0 lg:left-0 lg:w-64">
         <div className="mb-10 flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-lg bg-[#ce1b22]">
             <img
@@ -61,7 +68,7 @@ function App() {
         <nav className="flex flex-col gap-2">
           <a
             href="#"
-            onClick={() => { setPage("projects"); setSelectedProject(null); }}
+            onClick={() => { navigate("projects"); setSelectedProject(null); }}
             className={`rounded-lg px-3 py-3 text-sm font-medium ${page === "projects" ? "bg-white/10 text-white" : "text-stone-300 hover:bg-white/10 hover:text-white"}`}
           >
             Projects
@@ -69,7 +76,7 @@ function App() {
 
           <a
             href="#"
-            onClick={() => { setPage("rundown"); setSelectedProject(null); }}
+            onClick={() => { navigate("rundown"); setSelectedProject(null); }}
             className={`rounded-lg px-3 py-3 text-sm font-medium ${page === "rundown" ? "bg-white/10 text-white" : "text-stone-300 hover:bg-white/10 hover:text-white"}`}
           >
             Load Rundown
@@ -92,7 +99,7 @@ function App() {
           {(isLoggedIn &&
             <a
               href="#"
-              onClick={() => { setPage("settings"); setSelectedProject(null); }}
+              onClick={() => { navigate("settings"); setSelectedProject(null); }}
               className={`rounded-lg px-3 py-3 text-sm font-medium ${page === "settings" ? "bg-white/10 text-white" : "text-stone-300 hover:bg-white/10 hover:text-white"}`}
             >
               Settings
@@ -139,20 +146,20 @@ function App() {
             </button>
           )}
         </div>
-      </aside>
+      </aside>}
 
-      <section className="w-full p-5 lg:ml-64 lg:p-8">
+      <section className={`w-full p-5 lg:p-8 ${page !== "login" ? "lg:ml-64" : ""}`}>
         {page === "login" && <Login onLogin={handleLogin} />}
-        {page === "rundown" && <Rundown />}
-        {page === "settings" && <Settings />}
-        {page === "projects" && selectedProject && (
+        {page === "rundown" && isLoggedIn && <Rundown />}
+        {page === "settings" && isLoggedIn && <Settings />}
+        {page === "projects" && isLoggedIn && selectedProject && (
           <ProjectDetail
             project={selectedProject}
             onBack={handleBack}
-            onRundown={() => { setPage("rundown"); setSelectedProject(null); }}
+            onRundown={() => { navigate("rundown"); setSelectedProject(null); }}
           />
         )}
-        {page === "projects" && !selectedProject && (
+        {page === "projects" && isLoggedIn && !selectedProject && (
           <Projects onSelectProject={handleSelectProject} />
         )}
       </section>

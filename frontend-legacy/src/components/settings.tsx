@@ -23,13 +23,22 @@ function Settings() {
   });
   const isAdmin = ["PLATFORM ADMIN", "PARTNER", "ASSOCIATE"].includes(loggedInUser?.role ?? "");
   const canDelete = loggedInUser?.role === "PARTNER";
-  
+
   const [showNewUser, setShowNewUser] = useState(false);
   const [newEmail, setNewEmail]       = useState("");
   const [newFirstName, setFirstName] = useState("");
   const [newLastName, setLastName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole]         = useState("STRUCTURAL DESIGNER");
+
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredUsers = users.filter((user) =>
+    user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.role.toLocaleLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const [showChangeRole, setShowChangeRole] = useState(false);
   const [changeRoleTargetUser, setChangeRoleTargetUser] = useState<UserRead | null>(null);
@@ -282,17 +291,33 @@ function Settings() {
           File must have columns: email, first_name, last_name, password, role
         </p>
         <input
+          id="upload-file-input"
           type="file"
           accept=".xlsx"
-          className="mt-4 text-sm"
+          className="hidden"
           onChange={(e) => { setUploadFile(e.target.files?.[0] ?? null); setUploadResult(null); }} />
+        <label
+          htmlFor="upload-file-input"
+          className="mt-4 inline-block cursor-pointer text-sm text-[#302d27] hover:underline">
+          {uploadFile ? uploadFile.name : "No File Chosen"}
+        </label>
         {uploadResult && (
           <div className="mt-4 text-sm">
             <p className="font-medium text-[#302d27]">{uploadResult.created} user(s) created.</p>
             {uploadResult.errors.length > 0 && (
               <div className="mt-2">
-                <p className="font-medium text-[#ce1b22]">{uploadResult.errors.length} error(s):</p>
-                <ul className="mt-1 list-disc pl-4 text-stone-500">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-[#ce1b22]">{uploadResult.errors.length} error(s):</p>
+                  <button
+                    onClick={() => setUploadResult({ ...uploadResult, errors: [] })}
+                    className="text-stone-400 hover:text-[#302d27] transition"
+                    aria-label="Dismiss errors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+                <ul className="mt-1 max-h-40 overflow-y-auto list-disc pl-4 text-stone-500">
                   {uploadResult.errors.map((e) => (
                     <li key={e.row}>Row {e.row} ({e.email}): {e.reason}</li>
                   ))}
@@ -426,6 +451,15 @@ function Settings() {
           {isAdmin && ( <p className="mt-1 text-sm text-stone-500">Manage user accounts.</p> 
           )}
           {isAdmin && (
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search users..."
+              className="w-full max-w-sm rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]"
+            />
+          )}
+          {isAdmin && (
           <table className="w-full min-w-[600px] border-collapse text-left text-sm justify-between">
             <thead>
               <tr>
@@ -436,7 +470,7 @@ function Settings() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id}>
                   <td className="py-2 text-sm text-[#302d27]">{user.email}</td>
                   <td className="py-2 text-sm text-[#302d27]">{user.first_name + " " + user.last_name}</td>

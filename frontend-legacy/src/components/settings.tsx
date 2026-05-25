@@ -1,22 +1,31 @@
 import { useState, useEffect } from "react";
-import { fetchUsers, updateUser, createUser, uploadUsersFromExcel, deleteUser } from "../api/users";
+import { fetchUsers, updateUser, createUser, uploadUsersFromExcel, deleteUser, fetchUserProjects, addUserProject, removeUserProject } from "../api/users";
 import type { UserRead, BulkUploadResult } from "../api/users";
+import { fetchProjects } from "../api/projects";
 import { useToast, ToastContainer } from "./Toast";
 import { ConfirmDialog } from "./ConfirmDialog";
 
-const ROLE_OPTIONS: [string, string][] = [
-  ["PLATFORM ADMIN",      "Platform Admin"],
-  ["OFFICE ADMIN",      "Office Admin"],
-  ["STRUCTURAL DESIGNER", "Structural Designer"],
-  ["BIM DEVELOPER",       "BIM Developer"],
-  ["INSPECTOR",           "Inspector"],
-  ["ASSOCIATE",           "Associate"],
-  ["DRAFTER",             "Drafter"],
-  ["PROPOSAL",            "Proposal"],
-  ["RESEARCH",            "Research"],
-  ["LEGAL",               "Legal"],
-  ["PARTNER",             "Partner"],
+// [display label, access level 0–3]
+const ROLE_OPTIONS: [string, number][] = [
+  ["Platform Admin",       0],
+  ["Office Admin",         1],
+  ["Partner",              1],
+  ["BIM Developer",        2],
+  ["Structural Designer",  2],
+  ["Inspector",            3],
+  ["Associate",            3],
+  ["Drafter",              3],
+  ["Proposal",             3],
+  ["Research",             3],
+  ["Legal",                3],
 ];
+
+const ROLE_LABELS: Record<number, string> = {
+  0: "Platform Admin",
+  1: "Office Admin",
+  2: "Developer",
+  3: "Standard",
+};
 
 function Settings() {
   const { toasts, addToast } = useToast();
@@ -35,15 +44,16 @@ function Settings() {
     const saved = localStorage.getItem("currentUser");
     return saved ? (JSON.parse(saved) as UserRead) : null;
   });
-  const isAdmin = ["PLATFORM ADMIN", "PARTNER", "ASSOCIATE", "OFFICE ADMIN"].includes(loggedInUser?.role ?? "");
-  const canDelete = loggedInUser?.role === "PLATFORM ADMIN";
+  const isAdmin = loggedInUser?.role !== undefined && loggedInUser.role <= 1;
+  const canAssignProjects = loggedInUser?.role !== undefined && loggedInUser.role <= 2;
+  const canDelete = loggedInUser?.role === 0;
 
   const [showNewUser, setShowNewUser] = useState(false);
   const [newEmail, setNewEmail]       = useState("");
   const [newFirstName, setFirstName]  = useState("");
   const [newLastName, setLastName]    = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole]         = useState("STRUCTURAL DESIGNER");
+  const [newRole, setNewRole]         = useState(3);
 
   const [searchQuery, setSearchQuery] = useState("");
   const filteredUsers = users.filter((user) =>
@@ -52,6 +62,11 @@ function Settings() {
     user.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     user.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const [projectsDropdownUserId, setProjectsDropdownUserId] = useState<number | null>(null);
+  const [availableProjects, setAvailableProjects] = useState<string[]>([]);
+  const [originalProjects, setOriginalProjects] = useState<Set<string>>(new Set());
+  const [pendingProjects, setPendingProjects] = useState<Set<string>>(new Set());
 
   const [showChangeRole, setShowChangeRole] = useState(false);
   const [changeRoleTargetUser, setChangeRoleTargetUser] = useState<UserRead | null>(null);
@@ -64,8 +79,18 @@ function Settings() {
 
   useEffect(() => { reloadUsers(); }, []);
 
+  useEffect(() => {
+    if (projectsDropdownUserId === null) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const el = document.getElementById(`projects-drop-${projectsDropdownUserId}`);
+      if (el && !el.contains(e.target as Node)) setProjectsDropdownUserId(null);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [projectsDropdownUserId]);
+
   function handleBanClick(user: UserRead) {
-    if (["PLATFORM ADMIN", "PARTNER", "ASSOCIATE", "OFFICE ADMIN"].includes(user.role)) {
+    if (user.role <= 1) {
       addToast("That is an admin account and cannot be banned.", "error");
     } else {
       setConfirmUser(user);
@@ -100,6 +125,49 @@ function Settings() {
       reloadUsers();
     } catch (err) {
       addToast(err instanceof Error ? err.message : "Failed to delete user", "error");
+    }
+  }
+
+  async function handleOpenManageProjects(user: UserRead) {
+    if (projectsDropdownUserId === user.id) {
+      setProjectsDropdownUserId(null);
+      return;
+    }
+    try {
+      const [projects, userProjects] = await Promise.all([
+        fetchProjects(),
+        fetchUserProjects(user.id),
+      ]);
+      setAvailableProjects(projects.map((p) => p.number));
+      const userSet = new Set(userProjects);
+      setOriginalProjects(userSet);
+      setPendingProjects(new Set(userSet));
+      setProjectsDropdownUserId(user.id);
+    } catch (err) {
+      addToast(`Failed to load projects: ${err instanceof Error ? err.message : String(err)}`, "error");
+    }
+  }
+
+  function handleToggleProject(projectNumber: string) {
+    setPendingProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectNumber)) next.delete(projectNumber);
+      else next.add(projectNumber);
+      return next;
+    });
+  }
+
+  async function handleConfirmProjects() {
+    if (projectsDropdownUserId === null) return;
+    const toAdd = [...pendingProjects].filter((p) => !originalProjects.has(p));
+    const toRemove = [...originalProjects].filter((p) => !pendingProjects.has(p));
+    try {
+      for (const pn of toAdd) await addUserProject(projectsDropdownUserId, pn);
+      for (const pn of toRemove) await removeUserProject(projectsDropdownUserId, pn);
+      addToast("Projects updated successfully.");
+      setProjectsDropdownUserId(null);
+    } catch (err) {
+      addToast(`Failed to update projects: ${err instanceof Error ? err.message : String(err)}`, "error");
     }
   }
 
@@ -139,7 +207,7 @@ function Settings() {
       await createUser(newEmail, newFirstName, newLastName, newPassword, newRole);
       addToast("User created successfully.");
       setShowNewUser(false);
-      setNewEmail(""); setFirstName(""); setLastName(""); setNewPassword(""); setNewRole("STRUCTURAL DESIGNER");
+      setNewEmail(""); setFirstName(""); setLastName(""); setNewPassword(""); setNewRole(3);
       reloadUsers();
     } catch (err) {
       addToast(`Failed to create user: ${err instanceof Error ? err.message : String(err)}`, "error");
@@ -159,6 +227,21 @@ function Settings() {
     } finally {
       setUploadLoading(false);
     }
+  }
+
+  if (loggedInUser && loggedInUser.role > 2) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-wide">Settings</h1>
+          <p className="text-sm text-stone-500">Welcome, {loggedInUser.first_name}.</p>
+        </div>
+        <div className="rounded-lg border border-stone-200 bg-white p-6 text-center text-sm text-stone-500">
+          You do not have permission to access this page.
+        </div>
+        <ToastContainer toasts={toasts} />
+      </div>
+    );
   }
 
   return (
@@ -245,9 +328,9 @@ function Settings() {
               ))}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-stone-500">Role</label>
-                <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+                <select value={newRole} onChange={(e) => setNewRole(Number(e.target.value))}
                   className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]">
-                  {ROLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {ROLE_OPTIONS.map(([label, level]) => <option key={label} value={level}>{label}</option>)}
                 </select>
               </div>
             </div>
@@ -319,9 +402,9 @@ function Settings() {
             <h2 className="text-base font-semibold text-[#302d27]">Change Role</h2>
             <div className="mt-4 flex flex-col gap-1">
               <label className="text-xs font-medium text-stone-500">Role</label>
-              <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+              <select value={newRole} onChange={(e) => setNewRole(Number(e.target.value))}
                 className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]">
-                {ROLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {ROLE_OPTIONS.map(([label, level]) => <option key={label} value={level}>{label}</option>)}
               </select>
             </div>
             <div className="mt-5 flex justify-end gap-3">
@@ -390,16 +473,16 @@ function Settings() {
             </button>
           </div>
           {isAdmin && <p className="mt-1 text-sm text-stone-500">Manage user accounts.</p>}
-          {isAdmin && (
+          {canAssignProjects && (
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search users..."
               className="w-full max-w-sm rounded-lg border border-stone-300 px-3 py-2 text-sm text-[#302d27] outline-none focus:border-[#302d27]"/>
           )}
-          {isAdmin && (
+          {canAssignProjects && (
             <table className="w-full min-w-[600px] border-collapse text-left text-sm">
               <thead>
                 <tr>
-                  {["Email", "Name", "Role", "Action"].map((h) => (
+                  {["Email", "Name", "Role", "Project Access", ...(isAdmin ? ["Action"] : [])].map((h) => (
                     <th key={h} className="text-left text-sm font-medium text-stone-500">{h}</th>
                   ))}
                 </tr>
@@ -412,29 +495,72 @@ function Settings() {
                     <td className="py-2 text-sm">
                       {user.is_banned
                         ? <span className="text-[#302d27]">Banned</span>
-                        : <span>{user.role.split(" ").map((w: string) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ")}</span>
+                        : <span>{ROLE_LABELS[user.role] ?? `Level ${user.role}`}</span>
                       }
                     </td>
-                    <td className="py-2 text-sm text-[#302d27]">
-                      <div className="flex gap-3">
-                        {user.is_banned
-                          ? <button onClick={() => handleUnban(user)} className="text-sm font-semibold text-stone-500 transition hover:underline">Unban</button>
-                          : <button onClick={() => handleBanClick(user)} className="text-sm font-semibold text-[#ce1b22] transition hover:underline">Ban</button>
-                        }
-                        {canDelete && (
-                          <button onClick={() => { setChangeRoleTargetUser(user); setNewRole(user.role); setShowChangeRole(true); }}
-                            className="text-sm font-semibold text-stone-400 transition hover:text-[#ce1b22] hover:underline">
-                            Change Role
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button onClick={() => handleDeleteClick(user)}
-                            className="text-sm font-semibold text-stone-400 transition hover:text-[#ce1b22] hover:underline">
-                            Delete
-                          </button>
+                    <td className="py-2 text-sm">
+                      <div id={`projects-drop-${user.id}`} className="relative inline-block">
+                        <button
+                          onClick={() => handleOpenManageProjects(user)}
+                          className="text-sm font-semibold text-stone-400 transition hover:text-[#302d27] hover:underline">
+                          Projects ▾
+                        </button>
+                        {projectsDropdownUserId === user.id && (
+                          <div className="absolute left-0 top-full z-50 w-52 rounded-lg border border-stone-200 bg-white p-3 shadow-lg">
+                            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
+                              {availableProjects.length === 0
+                                ? <p className="text-xs text-stone-400">No projects found.</p>
+                                : availableProjects.map((pn) => (
+                                    <label key={pn} className="flex items-center gap-2 cursor-pointer text-xs text-[#302d27]">
+                                      <input
+                                        type="checkbox"
+                                        checked={pendingProjects.has(pn)}
+                                        onChange={() => handleToggleProject(pn)}
+                                        className="accent-[#302d27]"
+                                      />
+                                      {pn}
+                                    </label>
+                                  ))
+                              }
+                            </div>
+                            <div className="mt-3 flex justify-end gap-2">
+                              <button
+                                onClick={() => setProjectsDropdownUserId(null)}
+                                className="text-xs text-stone-400 hover:text-[#302d27] transition">
+                                Cancel
+                              </button>
+                              <button
+                                onClick={handleConfirmProjects}
+                                className="rounded px-3 py-1 text-xs font-semibold bg-[#302d27] text-white hover:bg-[#4a4540] transition">
+                                Confirm
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </td>
+                    {isAdmin && (
+                      <td className="py-2 text-sm text-[#302d27]">
+                        <div className="flex gap-3">
+                          {user.is_banned
+                            ? <button onClick={() => handleUnban(user)} className="text-sm font-semibold text-stone-500 transition hover:underline">Unban</button>
+                            : <button onClick={() => handleBanClick(user)} className="text-sm font-semibold text-[#ce1b22] transition hover:underline">Ban</button>
+                          }
+                          {canDelete && (
+                            <button onClick={() => { setChangeRoleTargetUser(user); setNewRole(user.role); setShowChangeRole(true); }}
+                              className="text-sm font-semibold text-stone-400 transition hover:text-[#ce1b22] hover:underline">
+                              Change Role
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => handleDeleteClick(user)}
+                              className="text-sm font-semibold text-stone-400 transition hover:text-[#ce1b22] hover:underline">
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

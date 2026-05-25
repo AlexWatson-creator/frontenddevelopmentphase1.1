@@ -7,7 +7,21 @@ from datetime import datetime
 # you may also have to run uv add "pydantic[email]" in the terminal too.
 # ---------------------------------------------------------------
 
-VALID_ROLES = {"PLATFORM ADMIN", "OFFICE ADMIN", "STRUCTURAL DESIGNER", "BIM DEVELOPER", "INSPECTOR", "ASSOCIATE", "DRAFTER", "PROPOSAL", "RESEARCH", "LEGAL", "PARTNER"}
+# Role levels: 0 = Platform Admin, 1 = Office Admin/Partner,
+#              2 = BIM Developer/Structural Designer, 3 = standard users
+ROLE_LEVEL_MAP: dict[str, int] = {
+    "PLATFORM ADMIN":       0,
+    "OFFICE ADMIN":         1,
+    "PARTNER":              1,
+    "BIM DEVELOPER":        2,
+    "STRUCTURAL DESIGNER":  2,
+    "INSPECTOR":            3,
+    "ASSOCIATE":            3,
+    "DRAFTER":              3,
+    "PROPOSAL":             3,
+    "RESEARCH":             3,
+    "LEGAL":                3,
+}
 
 class UserCreate(BaseModel):
     """Data needed to create a new user."""
@@ -15,11 +29,15 @@ class UserCreate(BaseModel):
     first_name: str = Field(min_length=1)
     last_name: str = Field(min_length=1)
     password: str = Field(min_length=4)
-    role: str = Field(default="STRUCTURAL DESIGNER")
+    role: int = Field(default=3)
+
+class UserProjectCreate(BaseModel):
+    user_id: int
+    project_number: str
 
 class UserUpdate(BaseModel):
     """Fields that can be changed after creation."""
-    role: Optional[str] = None
+    role: Optional[int] = None
     password: Optional[str] = Field(default=None, min_length=4)
     is_banned: Optional[bool] = None
 
@@ -31,7 +49,7 @@ class UserRead(BaseModel):
     email: str
     first_name: str
     last_name: str
-    role: str
+    role: int
     is_banned: bool
     created_at: datetime
 

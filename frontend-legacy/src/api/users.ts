@@ -5,7 +5,7 @@ export interface UserRead {
   email: string;
   first_name: string;
   last_name: string;
-  role: string;
+  role: number;
   is_banned: boolean;
   created_at: string;
 }
@@ -29,7 +29,7 @@ export async function fetchUsers(): Promise<UserRead[]> {
 
 export async function updateUser(
   id: number,
-  changes: { role?: string; is_banned?: boolean; password?: string }
+  changes: { role?: number; is_banned?: boolean; password?: string }
 ): Promise<UserRead> {
   const res = await fetch(`${API_BASE}/api/users/${id}`, {
     method: "PATCH",
@@ -45,7 +45,7 @@ export async function createUser(
   first_name: string,
   last_name: string,
   password: string,
-  role: string
+  role: number
 ): Promise<UserRead> {
   const res = await fetch(`${API_BASE}/api/users`, {
     method: "POST",
@@ -77,6 +77,30 @@ export interface BulkUploadError {
 export interface BulkUploadResult {
   created: number;
   errors: BulkUploadError[];
+}
+
+export async function fetchUserProjects(userId: number): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/users/${userId}/projects`);
+  if (!res.ok) throw new Error(`Failed to load user projects (${res.status})`);
+  return res.json() as Promise<string[]>;
+}
+
+export async function addUserProject(userId: number, projectNumber: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/users/${userId}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId, project_number: projectNumber }),
+  });
+  if (!res.ok) throw new Error(`Failed to add project (${res.status})`);
+  return res.json() as Promise<string[]>;
+}
+
+export async function removeUserProject(userId: number, projectNumber: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/users/${userId}/projects/${encodeURIComponent(projectNumber)}`, {
+    method: "DELETE",
+  });
+  if (res.status === 404) throw new Error("Project assignment not found");
+  if (!res.ok) throw new Error(`Failed to remove project (${res.status})`);
 }
 
 export async function uploadUsersFromExcel(file: File): Promise<BulkUploadResult> {

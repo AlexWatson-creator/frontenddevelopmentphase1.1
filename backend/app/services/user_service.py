@@ -1,7 +1,7 @@
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from app.models.management import User
-from app.schemas.users import UserCreate, UserUpdate, UserRead
+from app.models.management import User, UserProject, ProjectMeta
+from app.schemas.users import UserCreate, UserUpdate, UserRead, UserProjectCreate
 from typing import Optional
 
 # ---------------------------------------------------------------
@@ -48,6 +48,35 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[UserRe
     if not pwd_context.verify(password, user.password_hash):
         return None
     return UserRead.model_validate(user)
+
+def create_user_project(db: Session, data: UserProjectCreate) -> list[str]:
+    project = db.query(ProjectMeta).filter(ProjectMeta.project_number == data.project_number).first()
+    if not project:
+        raise ValueError(f"Project '{data.project_number}' does not exist")
+    existing = db.query(UserProject).filter(
+        UserProject.user_id == data.user_id,
+        UserProject.project_number == data.project_number
+    ).first()
+    if not existing:
+        db.add(UserProject(user_id=data.user_id, project_number=data.project_number))
+        db.commit()
+    return get_user_projects(db, data.user_id)
+
+
+def get_user_projects(db: Session, user_id: int) -> list[str]:
+    rows = db.query(UserProject).filter(UserProject.user_id == user_id).all()
+    return [row.project_number for row in rows]
+
+def remove_user_project(db: Session, user_id: int, project_number: str) -> bool:
+    row = db.query(UserProject).filter(
+        UserProject.user_id == user_id,
+        UserProject.project_number == project_number
+    ).first()
+    if not row:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
 
 def delete_user(db: Session, user_id: int) -> bool:
     user = db.query(User).filter(User.id == user_id).first()

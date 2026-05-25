@@ -831,6 +831,11 @@ GO
 -- Shows user's email, role (platform_admin / structural_designer / bim_designer), and ban status.
 -- Can store new users.
 ----------------------------------------------------------------------
+IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'management' AND TABLE_NAME = 'user_projects')
+BEGIN
+    DROP TABLE management.user_projects;
+END
+
 IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'management' AND TABLE_NAME = 'users')
 BEGIN
     DROP TABLE management.users;
@@ -845,14 +850,30 @@ BEGIN
         password_hash   VARCHAR(255)    NOT NULL,
         first_name      VARCHAR(100)    NOT NULL,
         last_name       VARCHAR(100)    NOT NULL,
-        role            VARCHAR(30)     NOT NULL DEFAULT 'STRUCTURAL DESIGNER',
+        role            INT             NOT NULL DEFAULT 3,
         is_banned       BIT             NOT NULL DEFAULT 0,
         created_at      DATETIME2       NOT NULL DEFAULT GETUTCDATE(),
 
         CONSTRAINT CK_users_role CHECK (
-            role IN ('PLATFORM ADMIN', 'OFFICE ADMIN', 'STRUCTURAL DESIGNER', 'BIM DEVELOPER', 'INSPECTOR', 'ASSOCIATE', 'DRAFTER', 'PROPOSAL', 'RESEARCH', 'LEGAL', 'PARTNER')
+            role IN (0,1,2,3)
         ),
         CONSTRAINT UQ_users_email UNIQUE (email)
+    );
+END;
+GO
+
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'management' AND TABLE_NAME = 'user_projects')
+BEGIN
+    CREATE TABLE management.user_projects (
+        user_id         INT             NOT NULL,
+        project_number  VARCHAR(50)     NOT NULL,
+
+        CONSTRAINT PK_user_projects PRIMARY KEY (user_id, project_number),
+        CONSTRAINT FK_user_projects_user FOREIGN KEY (user_id)
+            REFERENCES management.users(id),
+        CONSTRAINT FK_user_projects_project FOREIGN KEY (project_number)
+            REFERENCES management.project_meta(project_number)
     );
 END;
 GO

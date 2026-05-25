@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchProjects } from "../api/projects";
+import { fetchUserProjects } from "../api/users";
+import type { UserRead } from "../api/users";
 import {
   deriveStatus,
   formatDate,
@@ -14,7 +16,14 @@ function Projects({
 }: {
   onSelectProject: (project: ProjectGroup) => void;
 }) {
+  const loggedInUser = useState<UserRead | null>(() => {
+    const saved = localStorage.getItem("currentUser");
+    return saved ? (JSON.parse(saved) as UserRead) : null;
+  })[0];
+  const isAdmin = loggedInUser?.role !== undefined && loggedInUser.role <= 2;
+
   const [projects, setProjects] = useState<ProjectGroup[]>([]);
+  const [allowedProjects, setAllowedProjects] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -36,6 +45,13 @@ function Projects({
     loadProjects();
   }, []);
 
+  useEffect(() => {
+    if (!loggedInUser || isAdmin) return;
+    fetchUserProjects(loggedInUser.id)
+      .then((nums) => setAllowedProjects(new Set(nums)))
+      .catch(() => {});
+  }, [loggedInUser?.id]);
+
   const filteredProjects = useMemo(() => {
     return projects.filter((project) => {
       const text = search.toLowerCase();
@@ -50,9 +66,10 @@ function Projects({
       const matchesRevit =
         !revitYearFilter ||
         project.files.some((f) => f.software?.includes(revitYearFilter) ?? false);
-      return matchesSearch && matchesStatus && matchesRevit;
+      const matchesAccess = isAdmin || allowedProjects.has(project.number);
+      return matchesSearch && matchesStatus && matchesRevit && matchesAccess;
     });
-  }, [projects, search, statusFilter, revitYearFilter]);
+  }, [projects, search, statusFilter, revitYearFilter, allowedProjects, isAdmin]);
 
   const stats = useMemo(() => {
     return { totalProjects: projects.length };

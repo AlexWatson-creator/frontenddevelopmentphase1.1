@@ -6,6 +6,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 
 const ROLE_OPTIONS: [string, string][] = [
   ["PLATFORM ADMIN",      "Platform Admin"],
+  ["OFFICE ADMIN",      "Office Admin"],
   ["STRUCTURAL DESIGNER", "Structural Designer"],
   ["BIM DEVELOPER",       "BIM Developer"],
   ["INSPECTOR",           "Inspector"],
@@ -34,8 +35,8 @@ function Settings() {
     const saved = localStorage.getItem("currentUser");
     return saved ? (JSON.parse(saved) as UserRead) : null;
   });
-  const isAdmin = ["PLATFORM ADMIN", "PARTNER", "ASSOCIATE"].includes(loggedInUser?.role ?? "");
-  const canDelete = loggedInUser?.role === "PARTNER";
+  const isAdmin = ["PLATFORM ADMIN", "PARTNER", "ASSOCIATE", "OFFICE ADMIN"].includes(loggedInUser?.role ?? "");
+  const canDelete = loggedInUser?.role === "PLATFORM ADMIN";
 
   const [showNewUser, setShowNewUser] = useState(false);
   const [newEmail, setNewEmail]       = useState("");
@@ -64,7 +65,7 @@ function Settings() {
   useEffect(() => { reloadUsers(); }, []);
 
   function handleBanClick(user: UserRead) {
-    if (["PLATFORM ADMIN", "PARTNER", "ASSOCIATE"].includes(user.role)) {
+    if (["PLATFORM ADMIN", "PARTNER", "ASSOCIATE", "OFFICE ADMIN"].includes(user.role)) {
       addToast("That is an admin account and cannot be banned.", "error");
     } else {
       setConfirmUser(user);

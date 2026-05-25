@@ -7,7 +7,7 @@ from datetime import datetime
 # you may also have to run uv add "pydantic[email]" in the terminal too.
 # ---------------------------------------------------------------
 
-VALID_ROLES = {"PLATFORM ADMIN", "STRUCTURAL DESIGNER", "BIM DEVELOPER", "INSPECTOR", "ASSOCIATE", "DRAFTER", "PROPOSAL", "RESEARCH", "LEGAL", "PARTNER"}
+VALID_ROLES = {"PLATFORM ADMIN", "OFFICE ADMIN", "STRUCTURAL DESIGNER", "BIM DEVELOPER", "INSPECTOR", "ASSOCIATE", "DRAFTER", "PROPOSAL", "RESEARCH", "LEGAL", "PARTNER"}
 
 class UserCreate(BaseModel):
     """Data needed to create a new user."""

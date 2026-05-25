@@ -37,7 +37,7 @@ def bulk_upload_users(file: UploadFile = File(...), db: Session = Depends(get_db
     rows = list(ws.iter_rows(min_row=2, values_only=True))
 
     users_by_email = {}
-    ranking = ["RESEARCH", "LEGAL", "DRAFTER", "PROPOSAL", "INSPECTOR", "BIM DEVELOPER", "STRUCTURAL DESIGNER", "PLATFORM ADMIN", "ASSOCIATE", "PARTNER"]
+    ranking = ["RESEARCH", "LEGAL", "DRAFTER", "PROPOSAL", "INSPECTOR", "BIM DEVELOPER", "STRUCTURAL DESIGNER", "ASSOCIATE", "PARTNER", "OFFICE ADMIN", "PLATFORM ADMIN"]
     for i, raw_row in enumerate(rows, start=2):
         data = dict(zip(headers, raw_row))
         email = str(data.get("email") or "").strip()
@@ -57,11 +57,13 @@ def bulk_upload_users(file: UploadFile = File(...), db: Session = Depends(get_db
             for role in roles:
                 #if role not in VALID_ROLES:
                     #raise ValueError(f"Invalid role '{role}'")
-                if role == "PARTNER":
+                if role == "PLATFORM ADMIN":
+                    level = 10
+                elif role == "OFFICE ADMIN" and level < 10:
                     level = 9
-                elif role == "ASSOCIATE" and level < 9:
+                elif role == "PARTNER" and level < 9:
                     level = 8
-                elif role == "PLATFORM ADMIN" and level < 8:
+                elif role == "ASSOCIATE" and level < 8:
                     level = 7
                 elif role == "STRUCTURAL DESIGNER" and level < 7:
                     level = 6
